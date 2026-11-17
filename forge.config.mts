@@ -10,10 +10,15 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    name: 'Simple Coding Studio',
+    executableName: 'SimpleCodingStudio',
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({
+      name: 'SimpleCodingStudio',
+      setupExe: 'SimpleCodingStudio-Setup.exe',
+    }),
     new MakerZIP({}, ['darwin']),
     new MakerRpm({}),
     new MakerDeb({}),
