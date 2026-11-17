@@ -89,6 +89,13 @@ export interface SettingsInfo {
   model: AiModelId;
 }
 
+/** ☁️ Cloud dictation बाट आउने घटना — events from cloud dictation (Chrome/Edge speech service). */
+export interface DictationEvent {
+  type: 'ready' | 'start' | 'interim' | 'final' | 'end' | 'error';
+  text?: string;
+  error?: string;
+}
+
 /** यो computer को Claude Code login अवस्था — Claude Code sign-in state on this computer. */
 export interface ClaudeStatus {
   installed: boolean;
@@ -144,6 +151,13 @@ export interface StudioApi {
 
   /** Windows को Sound सेटिङ खोल्ने (mic volume) — Open Windows Sound settings (microphone volume). */
   openSoundSettings(): Promise<void>;
+
+  // ☁️ Cloud dictation (Chrome/Edge)
+  dictationAvailable(): Promise<boolean>;
+  dictationPrepare(): Promise<void>;
+  dictationStart(lang: 'ne-NP' | 'en-US'): Promise<void>;
+  dictationStop(): Promise<void>;
+  onDictationEvent(listener: (event: DictationEvent) => void): () => void;
 }
 
 declare global {

@@ -6,7 +6,12 @@ import {
   webUtils,
   type IpcRendererEvent,
 } from 'electron';
-import type { AiEvent, RunEvent, StudioApi } from './shared/types';
+import type {
+  AiEvent,
+  DictationEvent,
+  RunEvent,
+  StudioApi,
+} from './shared/types';
 
 function subscribe<T>(
   channel: string,
@@ -54,6 +59,13 @@ const api: StudioApi = {
     ipcRenderer.invoke('claude:login', switchAccount),
   claudeLogout: () => ipcRenderer.invoke('claude:logout'),
   openSoundSettings: () => ipcRenderer.invoke('system:openSoundSettings'),
+
+  dictationAvailable: () => ipcRenderer.invoke('dictation:available'),
+  dictationPrepare: () => ipcRenderer.invoke('dictation:prepare'),
+  dictationStart: (lang) => ipcRenderer.invoke('dictation:start', lang),
+  dictationStop: () => ipcRenderer.invoke('dictation:stop'),
+  onDictationEvent: (listener) =>
+    subscribe<DictationEvent>('dictation:event', listener),
 };
 
 contextBridge.exposeInMainWorld('studio', api);

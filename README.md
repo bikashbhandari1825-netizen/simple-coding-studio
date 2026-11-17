@@ -66,7 +66,7 @@ npm.cmd run make
 ## नयाँ सुविधाहरू (New features)
 
 - **ने / EN / ने+EN:** माथि दायाँको बटनले पूरै app को भाषा तुरुन्तै बदल्छ। Guru को जवाफ पनि त्यही भाषामा आउँछ।
-- **🎤 Live voice:** बोल्दै गर्दा शब्दहरू text box मा आउँछन् र आवाजअनुसार तरंग (waveform) हल्लिन्छ। आवाज यही computer मा GPU (WebGPU) बाट Whisper ले अक्षरमा बदल्छ, कतै पठाइँदैन। ⚡ = छिटो (whisper-base), 🎯 = बढी सही (whisper-small, नेपालीका लागि राम्रो)।
+- **🎤 Voice typing:** Web Speech API (`ne-NP` नेपाली / `en-US` English)। Electron भित्र यो API चल्दैन, त्यसैले app ले Chrome (नभए Edge) को एउटा लुकेको सानो window चलाउँछ; बोल्दै गर्दा नै शब्दहरू box मा आउँछन्। आवाज Google/Microsoft को speech service मा जान्छ र internet चाहिन्छ। App ले mic बाट waveform का लागि स्तर मात्र पढ्छ, रेकर्ड गर्दैन।
 - **Guru को Fix Tip:** Run गर्दा Python / Dart / Flutter / Node error आएमा output मुनि तुरुन्तै कुन फाइलको कुन लाइनमा के गडबड भयो र कसरी सच्याउने देखिन्छ। "फाइल खोल" थिच्दा ठ्याक्कै त्यो लाइनमा पुगिन्छ र editor मा रातो रेखा देखिन्छ।
 
 ---
@@ -83,13 +83,14 @@ src/
 │  ├─ runner.ts            ▶ Run presets (flutter, dart, npm, python)
 │  ├─ ai.ts                Guru — `claude -p` (Claude Code, streaming)
 │  ├─ claudeCode.ts        Claude Code खोज्ने, login/switch/logout
+│  ├─ cloudDictation.ts    Chrome/Edge मा Web Speech API (लुकेको window + localhost bridge)
 │  └─ settings.ts          Guru model
 └─ renderer/
    ├─ App.tsx              मुख्य layout
    ├─ components/          FileTree, EditorArea, ConsolePanel, TutorPanel, Dialogs, Welcome
    ├─ i18n.ts              ने / EN / दुवै भाषा
-   ├─ voice/               Live voice (Whisper worker, waveform)
+   ├─ voice/               Voice typing hook, waveform
    └─ lib/                 helpers, errorAnalyzer (Fix Tips)
 ```
 
-**Tech:** Electron Forge + Vite, React 19, TypeScript, Tailwind CSS 4, Monaco Editor, Claude Code CLI, Whisper (transformers.js) voice.
+**Tech:** Electron Forge + Vite, React 19, TypeScript, Tailwind CSS 4, Monaco Editor, Claude Code CLI, Web Speech API (Chrome/Edge) voice typing.

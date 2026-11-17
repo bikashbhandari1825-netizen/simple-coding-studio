@@ -336,21 +336,13 @@ export function TutorPanel({
             <VoiceWave analyser={voice.analyser} height={38} />
             <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-300">
               <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-rose-500" />
-              {voice.modelProgress !== null
+              {voice.state.stage === 'recording'
                 ? tr(
-                    `सुन्दैछु… model तयार हुँदैछ ${voice.modelProgress}%, शब्द केही बेरमा आउँछन् · Listening… model loading, words will follow`,
+                    `सुन्दैछु… ${voice.state.seconds}s — रोक्न फेरि 🎤 थिच्नुहोस् · Listening… press 🎤 to stop`,
                   )
-                : voice.state.stage === 'recording'
-                  ? tr(
-                      `सुन्दैछु… ${voice.state.seconds}s — रोक्न फेरि 🎤 थिच्नुहोस् · Listening… press 🎤 to stop`,
-                    )
-                  : ''}
+                : ''}
               <span className="ml-auto rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">
-                {voice.device === 'webgpu'
-                  ? '⚡ GPU'
-                  : voice.device === 'wasm'
-                    ? 'CPU'
-                    : '…'}
+                {voice.language === 'nepali' ? 'ne-NP' : 'en-US'}
               </span>
             </div>
           </div>
@@ -399,15 +391,13 @@ export function TutorPanel({
             >
               <span className="relative">
                 🎤
-                {/* हरियो = model तयार, पहेँलो = लोड हुँदै — green = model ready, amber = loading */}
+                {/* हरियो = voice typing तयार, पहेँलो = तयार हुँदै — green = ready, amber = getting ready */}
                 <span
-                  className={`absolute -top-1 -right-2 h-2 w-2 rounded-full ${voice.modelProgress === null ? 'bg-emerald-400' : 'animate-pulse bg-amber-400'}`}
+                  className={`absolute -top-1 -right-2 h-2 w-2 rounded-full ${voice.ready ? 'bg-emerald-400' : 'animate-pulse bg-amber-400'}`}
                   title={
-                    voice.modelProgress === null
-                      ? tr('आवाज model तयार · Speech model ready')
-                      : tr(
-                          `आवाज model तयार हुँदैछ ${voice.modelProgress}% · Speech model loading`,
-                        )
+                    voice.ready
+                      ? tr('Voice typing तयार · Voice typing ready')
+                      : tr('Voice typing तयार हुँदैछ · Voice typing getting ready')
                   }
                 />
               </span>
@@ -423,18 +413,6 @@ export function TutorPanel({
               }
             >
               {voice.language === 'nepali' ? 'ने' : 'EN'}
-            </button>
-            <button
-              className="rounded border border-slate-600 px-1 text-[10px] text-slate-300 hover:bg-slate-700"
-              title={tr(
-                '⚡ छिटो (whisper-base) वा 🎯 बढी सही (whisper-small, नेपालीका लागि राम्रो) · ⚡ Fast or 🎯 Accurate (better for Nepali)',
-              )}
-              disabled={voice.state.stage !== 'idle'}
-              onClick={() =>
-                voice.setQuality(voice.quality === 'fast' ? 'accurate' : 'fast')
-              }
-            >
-              {voice.quality === 'fast' ? '⚡' : '🎯'}
             </button>
           </div>
           <textarea

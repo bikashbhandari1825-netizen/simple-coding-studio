@@ -9,6 +9,10 @@ import {
   registerClaudeCodeHandlers,
   stopGuruChildren,
 } from './main-process/claudeCode';
+import {
+  registerCloudDictationHandlers,
+  stopCloudDictation,
+} from './main-process/cloudDictation';
 
 // Windows installer ले shortcut बनाउँदा/हटाउँदा एप तुरुन्तै बन्द गर्ने।
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -113,6 +117,7 @@ app.whenReady().then(() => {
   registerSettingsHandlers();
   registerAiHandlers();
   registerClaudeCodeHandlers();
+  registerCloudDictationHandlers();
   createWindow();
 
   app.on('activate', () => {
@@ -127,6 +132,7 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   stopCurrentRun();
   stopGuruChildren();
+  stopCloudDictation();
 });
 
 app.on('window-all-closed', () => {
