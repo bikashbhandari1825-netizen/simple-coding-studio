@@ -8,6 +8,7 @@ import type {
   SettingsInfo,
 } from '../shared/types';
 import { ConsolePanel, type ConsoleLine } from './components/ConsolePanel';
+import { AccountMenu } from './components/ConnectClaude';
 import { PromptDialog, SettingsDialog } from './components/Dialogs';
 import { EditorArea, type OpenTab } from './components/EditorArea';
 import { FileTree } from './components/FileTree';
@@ -49,7 +50,14 @@ export default function App() {
     runId: number;
     interactive: boolean;
   } | null>(null);
-  const [tutorOpen, setTutorOpen] = useState(true);
+  // Guru panel सधैं देखिन्छ; चौडाइ मात्र बदल्न मिल्छ — Guru is always visible; only its width can change.
+  const [guruWidth, setGuruWidth] = useState(() => {
+    try {
+      return Number(localStorage.getItem('studio.guruWidth')) || 400;
+    } catch {
+      return 400;
+    }
+  });
   const [settings, setSettings] = useState<SettingsInfo>({
     hasApiKey: false,
     claudeConnected: false,
@@ -377,7 +385,6 @@ export default function App() {
   }, [activeTab, consoleLines, project]);
 
   const askGuruAboutOutput = () => {
-    setTutorOpen(true);
     setPendingTutor({
       mode: 'fix',
       label: '🩺 यो output/गल्ती बुझाऊ · Explain this output/error',
@@ -392,6 +399,31 @@ export default function App() {
     () => presets.find((p) => p.id === presetId),
     [presets, presetId],
   );
+
+  const startGuruResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = guruWidth;
+    let latest = startWidth;
+    const move = (ev: PointerEvent) => {
+      const max = Math.max(320, Math.min(900, window.innerWidth - 520));
+      latest = Math.min(max, Math.max(300, startWidth + (startX - ev.clientX)));
+      setGuruWidth(latest);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      document.body.style.cursor = '';
+      try {
+        localStorage.setItem('studio.guruWidth', String(latest));
+      } catch {
+        // ignore
+      }
+    };
+    document.body.style.cursor = 'col-resize';
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
 
   // ---------- Layout ----------
   return (
@@ -460,12 +492,7 @@ export default function App() {
             💾 सेभ · Save
           </button>
         )}
-        <button
-          className={`btn-ghost ${tutorOpen ? 'text-sky-300' : ''}`}
-          onClick={() => setTutorOpen((o) => !o)}
-        >
-          🧑‍🏫 Guru
-        </button>
+        <AccountMenu settings={settings} onChange={setSettings} />
         <button
           className="btn-ghost"
           title="Settings"
@@ -560,19 +587,26 @@ export default function App() {
             )}
           </main>
         )}
-        {tutorOpen && (
-          <aside className="w-[380px] shrink-0 border-l border-slate-700">
-            <TutorPanel
-              settings={settings}
-              onSettingsChange={setSettings}
-              getContext={getContext}
-              pending={pendingTutor}
-              onPendingHandled={handlePendingHandled}
-              onOpenSettings={() => setDialog('settings')}
-              onClose={() => setTutorOpen(false)}
-            />
-          </aside>
-        )}
+        <aside
+          className="relative shrink-0 border-l border-slate-700"
+          style={{ width: guruWidth }}
+        >
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="तानेर चौडाइ बदल्नुहोस् · Drag to resize"
+            className="absolute top-0 -left-1 z-20 h-full w-2 cursor-col-resize hover:bg-sky-500/40"
+            onPointerDown={startGuruResize}
+          />
+          <TutorPanel
+            settings={settings}
+            onSettingsChange={setSettings}
+            getContext={getContext}
+            pending={pendingTutor}
+            onPendingHandled={handlePendingHandled}
+            onOpenSettings={() => setDialog('settings')}
+          />
+        </aside>
       </div>
 
       {/* Status bar */}

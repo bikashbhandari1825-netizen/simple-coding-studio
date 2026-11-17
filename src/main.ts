@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from 'electron';
+import { app, BrowserWindow, session, shell } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { registerAiHandlers } from './main-process/ai';
@@ -86,6 +86,22 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
+  // 🎤 Voice का लागि microphone (audio मात्र) अनुमति; camera र अरू सबै अस्वीकार।
+  // Allow the microphone (audio only) for voice input; deny camera and everything else.
+  session.defaultSession.setPermissionRequestHandler(
+    (_wc, permission, callback, details) => {
+      const mediaTypes =
+        'mediaTypes' in details ? (details.mediaTypes ?? []) : [];
+      callback(
+        permission === 'media' &&
+          mediaTypes.length > 0 &&
+          mediaTypes.every((t) => t === 'audio'),
+      );
+    },
+  );
+  session.defaultSession.setPermissionCheckHandler(
+    (_wc, permission) => permission === 'media',
+  );
   registerFileSystemHandlers();
   registerRunnerHandlers();
   registerSettingsHandlers();

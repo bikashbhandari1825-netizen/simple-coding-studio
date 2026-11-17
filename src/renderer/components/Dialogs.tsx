@@ -136,57 +136,59 @@ export function SettingsDialog({
       </label>
       <ConnectClaude settings={settings} onChange={onChange} />
 
-      <label className="mt-5 mb-1 block text-sm font-medium text-slate-300">
-        वा API key (वैकल्पिक) · Or an API key (optional)
-      </label>
-      <p className="mb-2 text-xs text-slate-400">
-        {settings.hasApiKey
-          ? '✅ Key सुरक्षित रूपमा राखिएको छ (Windows encryption) — A key is saved securely.'
-          : 'Key राखे यो browser login भन्दा पहिले प्रयोग हुन्छ — A saved key takes priority over the browser login.'}{' '}
-        <a
-          href="https://console.anthropic.com/settings/keys"
-          target="_blank"
-          rel="noreferrer"
-          className="text-sky-400 underline"
-        >
-          Key कहाँ पाउने? · Get a key
-        </a>
-      </p>
-      <div className="flex gap-2">
-        <input
-          type="password"
-          value={key}
-          placeholder="sk-ant-..."
-          autoComplete="off"
-          onChange={(e) => setKey(e.target.value)}
-          className="min-w-0 flex-1 rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-sky-500"
-        />
-        <button
-          className="btn-primary"
-          disabled={!key.trim()}
-          onClick={() =>
-            void run(
-              () => window.studio.saveApiKey(key),
-              'Key राखियो · Key saved',
-            )
-          }
-        >
-          राख · Save
-        </button>
-      </div>
-      {settings.hasApiKey && (
-        <button
-          className="mt-2 text-xs text-rose-400 hover:underline"
-          onClick={() =>
-            void run(
-              () => window.studio.clearApiKey(),
-              'Key हटाइयो · Key removed',
-            )
-          }
-        >
-          Key हटाऊ · Remove key
-        </button>
-      )}
+      <details className="mt-5" open={settings.hasApiKey}>
+        <summary className="mb-1 cursor-pointer text-sm font-medium text-slate-400">
+          Advanced: API key (नचाहिने · not needed with Connect)
+        </summary>
+        <p className="mb-2 text-xs text-slate-400">
+          {settings.hasApiKey
+            ? '✅ Key सुरक्षित रूपमा राखिएको छ (Windows encryption) — A key is saved securely.'
+            : 'Key राखे यो browser login भन्दा पहिले प्रयोग हुन्छ — A saved key takes priority over the browser login.'}{' '}
+          <a
+            href="https://console.anthropic.com/settings/keys"
+            target="_blank"
+            rel="noreferrer"
+            className="text-sky-400 underline"
+          >
+            Key कहाँ पाउने? · Get a key
+          </a>
+        </p>
+        <div className="flex gap-2">
+          <input
+            type="password"
+            value={key}
+            placeholder="sk-ant-..."
+            autoComplete="off"
+            onChange={(e) => setKey(e.target.value)}
+            className="min-w-0 flex-1 rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-sky-500"
+          />
+          <button
+            className="btn-primary"
+            disabled={!key.trim()}
+            onClick={() =>
+              void run(
+                () => window.studio.saveApiKey(key),
+                'Key राखियो · Key saved',
+              )
+            }
+          >
+            राख · Save
+          </button>
+        </div>
+        {settings.hasApiKey && (
+          <button
+            className="mt-2 text-xs text-rose-400 hover:underline"
+            onClick={() =>
+              void run(
+                () => window.studio.clearApiKey(),
+                'Key हटाइयो · Key removed',
+              )
+            }
+          >
+            Key हटाऊ · Remove key
+          </button>
+        )}
+      </details>
 
       <label className="mb-1 mt-5 block text-sm font-medium text-slate-300">
         AI Model

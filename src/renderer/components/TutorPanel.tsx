@@ -6,7 +6,8 @@ import type {
   SettingsInfo,
 } from '../../shared/types';
 import { errorText, newId } from '../lib/helpers';
-import { ConnectClaude } from './ConnectClaude';
+import { AccountFixActions, AccountMenu, ConnectClaude } from './ConnectClaude';
+import { useVoiceInput } from '../voice/useVoiceInput';
 import { Markdown } from './Markdown';
 
 interface ChatItem {
@@ -17,6 +18,7 @@ interface ChatItem {
   /** Chat मा देखाइने छोटो label — Short label shown in the chat (user turns). */
   label?: string;
   error?: string;
+  errorKind?: 'billing' | 'auth';
   streaming?: boolean;
 }
 
@@ -35,7 +37,6 @@ interface Props {
   pending: TutorRequest | null;
   onPendingHandled: () => void;
   onOpenSettings: () => void;
-  onClose: () => void;
 }
 
 export function TutorPanel({
@@ -45,12 +46,15 @@ export function TutorPanel({
   pending,
   onPendingHandled,
   onOpenSettings,
-  onClose,
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  // बोलेको कुरा input मा थप्ने — append spoken text to the input box.
+  const voice = useVoiceInput((text) =>
+    setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${text}` : text)),
+  );
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
@@ -64,7 +68,12 @@ export function TutorPanel({
           if (event.type === 'text')
             return { ...item, content: item.content + event.text };
           if (event.type === 'error')
-            return { ...item, streaming: false, error: event.message };
+            return {
+              ...item,
+              streaming: false,
+              error: event.message,
+              errorKind: event.kind,
+            };
           return { ...item, streaming: false };
         }),
       );
@@ -206,9 +215,7 @@ export function TutorPanel({
             ✨ नयाँ · New
           </button>
         )}
-        <button className="icon-btn" title="बन्द · Close" onClick={onClose}>
-          ✕
-        </button>
+        <AccountMenu settings={settings} onChange={onSettingsChange} />
       </div>
 
       {!settings.hasApiKey && !settings.claudeConnected && (
@@ -279,6 +286,13 @@ export function TutorPanel({
               {item.error && (
                 <p className="mt-1 text-rose-400">⚠️ {item.error}</p>
               )}
+              {item.error && item.errorKind && (
+                <AccountFixActions
+                  kind={item.errorKind}
+                  settings={settings}
+                  onChange={onSettingsChange}
+                />
+              )}
             </div>
           ),
         )}
@@ -305,7 +319,54 @@ export function TutorPanel({
             🗺️ एप योजना · Plan app
           </button>
         </div>
+        {voice.state.stage !== 'idle' && (
+          <p className="mb-1.5 text-xs text-sky-300">
+            {voice.state.stage === 'recording' &&
+              `🔴 सुन्दैछु… ${voice.state.seconds}s — फेरि 🎤 थिच्दा रोकिन्छ · Listening… press 🎤 again to stop`}
+            {voice.state.stage === 'loading' &&
+              `⬇️ आवाज बुझ्ने model ल्याउँदै (पहिलोपटक मात्र, ~240MB) ${voice.state.progress}% · Downloading the speech model (first time only)`}
+            {voice.state.stage === 'transcribing' &&
+              '✍️ अक्षरमा बदल्दै… · Turning speech into text…'}
+          </p>
+        )}
+        {voice.error && (
+          <p
+            className="mb-1.5 text-xs text-rose-400"
+            onClick={voice.clearError}
+          >
+            {voice.error}
+          </p>
+        )}
         <div className="flex gap-2">
+          <div className="flex flex-col gap-1">
+            <button
+              className={`rounded-lg px-2.5 py-1.5 text-base ${
+                voice.state.stage === 'recording'
+                  ? 'animate-pulse bg-rose-600 text-white'
+                  : 'border border-slate-600 text-slate-200 hover:bg-slate-700'
+              } disabled:opacity-40`}
+              title="बोलेर लेख्नुहोस् (Voice) · Speak instead of typing"
+              disabled={
+                voice.state.stage === 'loading' ||
+                voice.state.stage === 'transcribing'
+              }
+              onClick={voice.toggle}
+            >
+              🎤
+            </button>
+            <button
+              className="rounded border border-slate-600 px-1 text-[10px] text-slate-300 hover:bg-slate-700"
+              title="बोल्ने भाषा · Speaking language"
+              disabled={voice.state.stage !== 'idle'}
+              onClick={() =>
+                voice.setLanguage(
+                  voice.language === 'nepali' ? 'english' : 'nepali',
+                )
+              }
+            >
+              {voice.language === 'nepali' ? 'ने' : 'EN'}
+            </button>
+          </div>
           <textarea
             value={input}
             rows={2}

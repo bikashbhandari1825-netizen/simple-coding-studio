@@ -155,32 +155,69 @@ async function handleAsk(target: WebContents, req: AiRequest) {
       send(target, { requestId, type: 'done' });
       return;
     }
-    send(target, { requestId, type: 'error', message: describeError(err) });
+    send(target, { requestId, type: 'error', ...describeError(err) });
   } finally {
     active.delete(requestId);
   }
 }
 
-function describeError(err: unknown): string {
+type ErrorKind = 'billing' | 'auth';
+
+function describeError(err: unknown): { message: string; kind?: ErrorKind } {
+  const text = err instanceof Error ? err.message : String(err);
+  // Credit सकिँदा API ले 400 फर्काउँछ — the API answers 400 when the account is out of credit.
+  if (
+    err instanceof Anthropic.BadRequestError &&
+    /credit balance|billing|purchase credits/i.test(text)
+  ) {
+    return {
+      kind: 'billing',
+      message:
+        'यो account मा credit (ब्यालेन्स) सकियो। तलको "Account फेर" थिचेर अर्को account जोड्नुहोस्, वा credit थप्नुहोस्। — This account is out of credit. Switch to another account below, or add credits.',
+    };
+  }
   if (err instanceof Anthropic.AuthenticationError) {
-    return 'API key मिलेन। Settings मा key जाँच्नुहोस् — Invalid API key; check it in Settings.';
+    return {
+      kind: 'auth',
+      message:
+        'Login वा API key मिलेन (म्याद सकिएको हुन सक्छ)। फेरि जोड्नुहोस् — The login or API key was rejected (it may have expired). Please reconnect.',
+    };
   }
   if (err instanceof Anthropic.PermissionDeniedError) {
-    return 'यो key ले यो model चलाउन पाउँदैन — This key cannot use this model.';
+    return {
+      kind: 'auth',
+      message:
+        'यो account ले यो model चलाउन पाउँदैन — This account cannot use this model.',
+    };
   }
   if (err instanceof Anthropic.RateLimitError) {
-    return 'धेरै छिटो-छिटो सोधियो, एकछिन पर्खेर फेरि प्रयास गर्नुहोस् — Rate limited; wait a moment and try again.';
+    return {
+      message:
+        'धेरै छिटो-छिटो सोधियो, एकछिन पर्खेर फेरि प्रयास गर्नुहोस् — Rate limited; wait a moment and try again.',
+    };
   }
   if (err instanceof Anthropic.BadRequestError) {
-    return `अनुरोध मिलेन — Bad request: ${err.message}`;
+    return { message: `अनुरोध मिलेन — Bad request: ${text}` };
   }
   if (err instanceof Anthropic.APIConnectionError) {
-    return 'Internet जडान भएन — Could not connect. Check your internet connection.';
+    return {
+      message:
+        'Internet जडान भएन — Could not connect. Check your internet connection.',
+    };
   }
   if (err instanceof Anthropic.APIError) {
-    return `AI सेवामा समस्या (${err.status ?? '?'}) — API error: ${err.message}`;
+    return {
+      message: `AI सेवामा समस्या (${err.status ?? '?'}) — API error: ${text}`,
+    };
   }
-  return err instanceof Error ? err.message : String(err);
+  // Login profile को token नवीकरण असफल — the saved login could not be refreshed.
+  if (/profile|credential|refresh|token/i.test(text)) {
+    return {
+      kind: 'auth',
+      message: `Claude login पुरानो भयो, फेरि जोड्नुहोस् — Your Claude login needs to be renewed. (${text.slice(0, 160)})`,
+    };
+  }
+  return { message: text };
 }
 
 export function registerAiHandlers(): void {

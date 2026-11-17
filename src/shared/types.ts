@@ -69,7 +69,12 @@ export interface AiRequest {
 export type AiEvent =
   | { requestId: string; type: 'text'; text: string }
   | { requestId: string; type: 'done' }
-  | { requestId: string; type: 'error'; message: string };
+  | {
+      requestId: string;
+      type: 'error';
+      message: string;
+      kind?: 'billing' | 'auth';
+    };
 
 export const AI_MODELS = [
   { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (सबैभन्दा राम्रो · best)' },
