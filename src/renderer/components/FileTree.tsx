@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FileEntry, ProjectInfo } from '../../shared/types';
 import { errorText, fileIcon } from '../lib/helpers';
+import { tr } from '../i18n';
 
 interface Props {
   project: ProjectInfo;
@@ -31,14 +32,14 @@ export function FileTree(props: Props) {
         </button>
         <button
           className="icon-btn"
-          title="नयाँ फाइल · New file"
+          title={tr('नयाँ फाइल · New file')}
           onClick={onNewFile}
         >
           ＋📄
         </button>
         <button
           className="icon-btn"
-          title="नयाँ फोल्डर · New folder"
+          title={tr('नयाँ फोल्डर · New folder')}
           onClick={onNewFolder}
         >
           ＋📁
@@ -48,7 +49,7 @@ export function FileTree(props: Props) {
         className="truncate px-3 pt-1 text-[11px] text-slate-500"
         title={selectedDir}
       >
-        नयाँ फाइल यहाँ बन्छ · New items go in:{' '}
+        {tr('नयाँ फाइल यहाँ बन्छ · New items go in:')}{' '}
         {selectedDir === project.rootPath
           ? '/'
           : selectedDir.slice(project.rootPath.length)}
@@ -85,7 +86,7 @@ function DirChildren(props: Props & { dirPath: string; depth: number }) {
   if (entries.length === 0 && depth === 0) {
     return (
       <div className="px-3 py-2 text-xs text-slate-500">
-        खाली फोल्डर · Empty folder
+        {tr('खाली फोल्डर · Empty folder')}
       </div>
     );
   }
@@ -139,7 +140,7 @@ function TreeRow(props: Props & { entry: FileEntry; depth: number }) {
         <span className="min-w-0 flex-1 truncate">{entry.name}</span>
         <button
           className="hidden text-xs text-slate-500 group-hover:block hover:text-rose-400"
-          title="Recycle Bin मा पठाऊ · Move to Recycle Bin"
+          title={tr('Recycle Bin मा पठाऊ · Move to Recycle Bin')}
           onClick={(e) => {
             e.stopPropagation();
             onTrash(entry);

@@ -14,6 +14,8 @@ import {
 } from './ClaudeAccount';
 import { useVoiceInput } from '../voice/useVoiceInput';
 import { Markdown } from './Markdown';
+import { getUiLang, tr, tr2 } from '../i18n';
+import { VoiceWave } from '../voice/VoiceWave';
 
 interface ChatItem {
   id: string;
@@ -52,10 +54,21 @@ export function TutorPanel({
   const [input, setInput] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
-  // बोलेको कुरा input मा थप्ने — append spoken text to the input box.
-  const voice = useVoiceInput((text) =>
-    setInput((prev) => (prev.trim() ? `${prev.trimEnd()} ${text}` : text)),
-  );
+  // बोल्दै गर्दा शब्दहरू तुरुन्तै input मा देखाउने — show spoken words in the input box live.
+  // रेकर्डिङ सुरु हुँदा box मा भएको पाठ यहीँ एकपटक मात्र समात्ने (React को ढिलो update मा भर नपर्ने)।
+  // Capture the box's text once, when dictation starts, without relying on a deferred state updater.
+  const inputRef = useRef(input);
+  inputRef.current = input;
+  const voiceBase = useRef<string | null>(null);
+  const voice = useVoiceInput((text, final) => {
+    if (voiceBase.current === null)
+      voiceBase.current = inputRef.current.trimEnd();
+    const base = voiceBase.current;
+    setInput(base && text ? `${base} ${text}` : base || text);
+    if (final) voiceBase.current = null;
+  });
+  const listening =
+    voice.state.stage === 'recording' || voice.state.stage === 'finishing';
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
@@ -115,6 +128,7 @@ export function TutorPanel({
       setBusyId(requestId);
       try {
         await window.studio.askAi({
+          answerLang: getUiLang(),
           requestId,
           mode: req.mode,
           messages: [...recent, { role: 'user', content: req.prompt }],
@@ -159,7 +173,7 @@ export function TutorPanel({
     if (mode === 'explain') {
       if (!ctx.code && !ctx.selection) return;
       const what = ctx.selection
-        ? 'छानेको कोड · the selected code'
+        ? tr('छानेको कोड · the selected code')
         : `${ctx.fileName ?? 'यो फाइल'}`;
       void ask({
         mode,
@@ -170,7 +184,7 @@ export function TutorPanel({
     } else if (mode === 'fix') {
       void ask({
         mode,
-        label: '🩺 मेरो कोडमा गल्ती खोज · Find mistakes in my code',
+        label: tr('🩺 मेरो कोडमा गल्ती खोज · Find mistakes in my code'),
         prompt:
           'Please review my code for mistakes (syntax, brackets, logic) and tell me exactly how to fix each one.',
         context: ctx,
@@ -201,7 +215,7 @@ export function TutorPanel({
         <span className="text-lg">🧑‍🏫</span>
         <div className="flex-1">
           <div className="text-sm font-semibold text-slate-100">
-            Guru — AI शिक्षक
+            {tr('Guru — AI शिक्षक')}
           </div>
           <div className="text-[11px] text-slate-400">
             नेपाली + English मा बुझाउँछ
@@ -211,9 +225,9 @@ export function TutorPanel({
           <button
             className="chip"
             onClick={() => setItems([])}
-            title="नयाँ कुराकानी · New conversation"
+            title={tr('नयाँ कुराकानी · New conversation')}
           >
-            ✨ नयाँ · New
+            {tr('✨ नयाँ · New')}
           </button>
         )}
         <AccountMenu account={account} />
@@ -222,8 +236,9 @@ export function TutorPanel({
       {(account.waiting || (account.status && !account.status.loggedIn)) && (
         <div className="m-3 rounded-lg border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200">
           <p className="mb-2">
-            Guru चलाउन Claude Code मा login गर्नुहोस्। — Sign in to Claude Code to
-            use Guru.
+            {tr(
+              'Guru चलाउन Claude Code मा login गर्नुहोस्। — Sign in to Claude Code to use Guru.',
+            )}
           </p>
           <LoginCard account={account} compact />
         </div>
@@ -233,23 +248,25 @@ export function TutorPanel({
         {items.length === 0 && (
           <div className="space-y-2 text-sm text-slate-400">
             <p>
-              नमस्ते! म तपाईंको coding शिक्षक हुँ। तलका बटन थिच्नुहोस् वा जे पनि सोध्नुहोस्।
-            </p>
-            <p>
-              Hi! I'm your coding tutor. Use the buttons below or ask me
-              anything.
+              {tr(
+                "नमस्ते! म तपाईंको coding शिक्षक हुँ। तलका बटन थिच्नुहोस् वा जे पनि सोध्नुहोस्। — Hi! I'm your coding tutor. Use the buttons below or ask me anything.",
+              )}
             </p>
             <ul className="list-disc space-y-1 pl-5 text-xs">
               <li>
-                📖 खुला फाइल वा छानेको कोड लाइन-लाइन बुझाउँछु · I explain code line
-                by line
+                {tr(
+                  '📖 खुला फाइल वा छानेको कोड लाइन-लाइन बुझाउँछु · I explain code line by line',
+                )}
               </li>
               <li>
-                🩺 तपाईंको कोडका गल्ती खोजेर सच्याउने तरिका बताउँछु · I find and
-                explain mistakes
+                {tr(
+                  '🩺 तपाईंको कोडका गल्ती खोजेर सच्याउने तरिका बताउँछु · I find and explain mistakes',
+                )}
               </li>
               <li>
-                🗺️ नयाँ एपको चरणबद्ध योजना बनाउँछु · I plan new apps step by step
+                {tr(
+                  '🗺️ नयाँ एपको चरणबद्ध योजना बनाउँछु · I plan new apps step by step',
+                )}
               </li>
             </ul>
           </div>
@@ -271,11 +288,11 @@ export function TutorPanel({
                 <Markdown text={item.content} />
               ) : item.streaming ? (
                 <span className="animate-pulse text-slate-400">
-                  Guru सोच्दैछ… · thinking…
+                  {tr('Guru सोच्दैछ… · thinking…')}
                 </span>
               ) : null}
               {item.error && (
-                <p className="mt-1 text-rose-400">⚠️ {item.error}</p>
+                <p className="mt-1 text-rose-400">⚠️ {tr(item.error)}</p>
               )}
               {item.error && item.errorKind && (
                 <AccountFixActions kind={item.errorKind} account={account} />
@@ -293,27 +310,44 @@ export function TutorPanel({
             disabled={!!busyId || !hasCode}
             onClick={() => quick('explain')}
           >
-            📖 बुझाऊ · Explain
+            {tr('📖 बुझाऊ · Explain')}
           </button>
           <button
             className="chip"
             disabled={!!busyId || !hasCode}
             onClick={() => quick('fix')}
           >
-            🩺 गल्ती खोज · Check
+            {tr('🩺 गल्ती खोज · Check')}
           </button>
           <button className="chip" disabled={!!busyId} onClick={startBlueprint}>
-            🗺️ एप योजना · Plan app
+            {tr('🗺️ एप योजना · Plan app')}
           </button>
         </div>
-        {voice.state.stage !== 'idle' && (
+        {listening && (
+          <div className="mb-2 rounded-xl border border-violet-500/40 bg-gradient-to-r from-sky-950/60 via-violet-950/60 to-pink-950/50 px-3 py-2">
+            <VoiceWave analyser={voice.analyser} height={38} />
+            <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-300">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+              {voice.state.stage === 'recording'
+                ? tr(
+                    `सुन्दैछु… ${voice.state.seconds}s — रोक्न फेरि 🎤 थिच्नुहोस् · Listening… press 🎤 to stop`,
+                  )
+                : tr('अन्तिम शब्दहरू मिलाउँदै… · Finishing the last words…')}
+              <span className="ml-auto rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">
+                {voice.device === 'webgpu'
+                  ? '⚡ GPU'
+                  : voice.device === 'wasm'
+                    ? 'CPU'
+                    : '…'}
+              </span>
+            </div>
+          </div>
+        )}
+        {voice.state.stage === 'loading' && (
           <p className="mb-1.5 text-xs text-sky-300">
-            {voice.state.stage === 'recording' &&
-              `🔴 सुन्दैछु… ${voice.state.seconds}s — फेरि 🎤 थिच्दा रोकिन्छ · Listening… press 🎤 again to stop`}
-            {voice.state.stage === 'loading' &&
-              `⬇️ आवाज बुझ्ने model ल्याउँदै (पहिलोपटक मात्र, ~240MB) ${voice.state.progress}% · Downloading the speech model (first time only)`}
-            {voice.state.stage === 'transcribing' &&
-              '✍️ अक्षरमा बदल्दै… · Turning speech into text…'}
+            {tr(
+              `⬇️ आवाज बुझ्ने model तयार गर्दै (पहिलोपटक मात्र, ${voice.quality === 'fast' ? '~160MB' : '~390MB'}) ${voice.state.progress}% · Preparing the speech model (first time only)`,
+            )}
           </p>
         )}
         {voice.error && (
@@ -321,21 +355,21 @@ export function TutorPanel({
             className="mb-1.5 text-xs text-rose-400"
             onClick={voice.clearError}
           >
-            {voice.error}
+            {tr(voice.error)}
           </p>
         )}
         <div className="flex gap-2">
           <div className="flex flex-col gap-1">
             <button
               className={`rounded-lg px-2.5 py-1.5 text-base ${
-                voice.state.stage === 'recording'
-                  ? 'animate-pulse bg-rose-600 text-white'
+                listening
+                  ? 'bg-rose-600 text-white shadow-[0_0_14px_rgba(244,63,94,0.7)]'
                   : 'border border-slate-600 text-slate-200 hover:bg-slate-700'
               } disabled:opacity-40`}
-              title="बोलेर लेख्नुहोस् (Voice) · Speak instead of typing"
+              title={tr('बोलेर लेख्नुहोस् (Voice) · Speak instead of typing')}
               disabled={
                 voice.state.stage === 'loading' ||
-                voice.state.stage === 'transcribing'
+                voice.state.stage === 'finishing'
               }
               onClick={voice.toggle}
             >
@@ -343,7 +377,7 @@ export function TutorPanel({
             </button>
             <button
               className="rounded border border-slate-600 px-1 text-[10px] text-slate-300 hover:bg-slate-700"
-              title="बोल्ने भाषा · Speaking language"
+              title={tr('बोल्ने भाषा · Speaking language')}
               disabled={voice.state.stage !== 'idle'}
               onClick={() =>
                 voice.setLanguage(
@@ -353,11 +387,26 @@ export function TutorPanel({
             >
               {voice.language === 'nepali' ? 'ने' : 'EN'}
             </button>
+            <button
+              className="rounded border border-slate-600 px-1 text-[10px] text-slate-300 hover:bg-slate-700"
+              title={tr(
+                '⚡ छिटो (whisper-base) वा 🎯 बढी सही (whisper-small, नेपालीका लागि राम्रो) · ⚡ Fast or 🎯 Accurate (better for Nepali)',
+              )}
+              disabled={voice.state.stage !== 'idle'}
+              onClick={() =>
+                voice.setQuality(voice.quality === 'fast' ? 'accurate' : 'fast')
+              }
+            >
+              {voice.quality === 'fast' ? '⚡' : '🎯'}
+            </button>
           </div>
           <textarea
             value={input}
             rows={2}
-            placeholder="प्रश्न लेख्नुहोस्… (Enter = पठाउ, Shift+Enter = नयाँ लाइन)"
+            placeholder={tr2(
+              'प्रश्न लेख्नुहोस् वा 🎤 थिचेर बोल्नुहोस्… (Enter = पठाउ)',
+              'Type or press 🎤 and speak… (Enter = send)',
+            )}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {

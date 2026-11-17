@@ -1,3 +1,4 @@
+import * as monaco from 'monaco-editor';
 import type * as Monaco from 'monaco-editor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
@@ -22,6 +23,9 @@ import {
   rememberRecent,
   stripAnsi,
 } from './lib/helpers';
+import { getUiLang, setUiLang, tr, type UiLang } from './i18n';
+import { LangSwitch } from './components/LangSwitch';
+import { analyzeOutput, type FixTip } from './lib/errorAnalyzer';
 
 type DialogKind = 'newFile' | 'newFolder' | 'newFlutter' | 'settings' | null;
 
@@ -59,6 +63,12 @@ export default function App() {
     }
   });
   const account = useClaudeAccount();
+  // भाषा बदल्दा पूरै app फेरि render हुन्छ — changing the language re-renders the whole app.
+  const [uiLang, setUiLangState] = useState<UiLang>(getUiLang);
+  const changeLang = (lang: UiLang) => {
+    setUiLang(lang);
+    setUiLangState(lang);
+  };
   const [settings, setSettings] = useState<SettingsInfo>({
     model: 'default',
   });
@@ -133,10 +143,12 @@ export default function App() {
         pushLine(
           event.code === 0 || event.stoppedByUser ? 'info' : 'error',
           event.stoppedByUser
-            ? '⏹ तपाईंले रोक्नुभयो · Stopped by you'
+            ? tr('⏹ तपाईंले रोक्नुभयो · Stopped by you')
             : event.code === 0
-              ? '✅ सफलतापूर्वक सकियो · Finished successfully'
-              : `❌ गल्ती भयो (code ${event.code ?? '?'}) — बुझ्न "Guru लाई सोध" थिच्नुहोस् · Failed; press "Ask Guru" to understand the error`,
+              ? tr('✅ सफलतापूर्वक सकियो · Finished successfully')
+              : tr(
+                  `❌ गल्ती भयो (code ${event.code ?? '?'}) — बुझ्न "Guru लाई सोध" थिच्नुहोस् · Failed; press "Ask Guru" to understand the error`,
+                ),
         );
       }
     });
@@ -170,7 +182,9 @@ export default function App() {
   const confirmDiscard = () =>
     dirtyCount === 0 ||
     window.confirm(
-      `${dirtyCount} फाइल सेभ भएका छैनन्। छोडेर अगाडि बढ्ने? — ${dirtyCount} unsaved file(s). Discard changes?`,
+      tr(
+        `${dirtyCount} फाइल सेभ भएका छैनन्। छोडेर अगाडि बढ्ने? — ${dirtyCount} unsaved file(s). Discard changes?`,
+      ),
     );
 
   const applyProject = useCallback((proj: ProjectInfo | null) => {
@@ -195,7 +209,8 @@ export default function App() {
   const openRecent = async (p: string) => {
     try {
       const proj = await window.studio.openRecentFolder(p);
-      if (!proj) showError('यो फोल्डर भेटिएन — This folder no longer exists.');
+      if (!proj)
+        showError(tr('यो फोल्डर भेटिएन — This folder no longer exists.'));
       applyProject(proj);
     } catch (err) {
       showError(errorText(err));
@@ -212,7 +227,9 @@ export default function App() {
       const proj = await window.studio.openDroppedFolder(file);
       if (!proj)
         showError(
-          'कृपया फाइल होइन, फोल्डर छोड्नुहोस् — Please drop a folder, not a file.',
+          tr(
+            'कृपया फाइल होइन, फोल्डर छोड्नुहोस् — Please drop a folder, not a file.',
+          ),
         );
       applyProject(proj);
     } catch (err) {
@@ -229,7 +246,9 @@ export default function App() {
       }
       if (isProbablyBinary(entry.name)) {
         showError(
-          'यो फाइल कोड होइन (image/binary), editor मा खोल्न मिल्दैन — This is not a text file.',
+          tr(
+            'यो फाइल कोड होइन (image/binary), editor मा खोल्न मिल्दैन — This is not a text file.',
+          ),
         );
         return;
       }
@@ -263,7 +282,7 @@ export default function App() {
           t.path === tab.path ? { ...t, savedContent: tab.content } : t,
         ),
       );
-      showToast(`💾 ${tab.name} सेभ भयो · Saved`);
+      showToast(tr(`💾 ${tab.name} सेभ भयो · Saved`));
       if (tab.name === 'pubspec.yaml' || tab.name === 'package.json')
         refreshPresets(project, activePath);
     } catch (err) {
@@ -287,7 +306,7 @@ export default function App() {
       tab &&
       tab.content !== tab.savedContent &&
       !window.confirm(
-        `${tab.name} सेभ भएको छैन। बन्द गर्ने? — Close without saving?`,
+        tr(`${tab.name} सेभ भएको छैन। बन्द गर्ने? — Close without saving?`),
       )
     ) {
       return;
@@ -302,7 +321,9 @@ export default function App() {
   const trash = async (entry: FileEntry) => {
     if (
       !window.confirm(
-        `"${entry.name}" लाई Recycle Bin मा पठाउने? — Move "${entry.name}" to the Recycle Bin?`,
+        tr(
+          `"${entry.name}" लाई Recycle Bin मा पठाउने? — Move "${entry.name}" to the Recycle Bin?`,
+        ),
       )
     )
       return;
@@ -316,7 +337,7 @@ export default function App() {
       if (activePath && gone(activePath)) setActivePath(null);
       if (gone(selectedDir) && project) setSelectedDir(project.rootPath);
       setTreeVersion((v) => v + 1);
-      showToast('🗑 Recycle Bin मा पठाइयो · Moved to Recycle Bin');
+      showToast(tr('🗑 Recycle Bin मा पठाइयो · Moved to Recycle Bin'));
     } catch (err) {
       showError(errorText(err));
     }
@@ -355,7 +376,7 @@ export default function App() {
     const proj = await window.studio.createFlutterProject(name);
     if (proj) {
       applyProject(proj);
-      showToast('✨ नयाँ Flutter एप तयार भयो! · New Flutter app created!');
+      showToast(tr('✨ नयाँ Flutter एप तयार भयो! · New Flutter app created!'));
     }
   };
 
@@ -386,13 +407,129 @@ export default function App() {
   const askGuruAboutOutput = () => {
     setPendingTutor({
       mode: 'fix',
-      label: '🩺 यो output/गल्ती बुझाऊ · Explain this output/error',
+      label: tr('🩺 यो output/गल्ती बुझाऊ · Explain this output/error'),
       prompt: 'I ran my program. Please explain the output and fix any error.',
       context: getContext(),
     });
   };
 
   const handlePendingHandled = useCallback(() => setPendingTutor(null), []);
+
+  // ---------- Smart Error Analyzer ----------
+  // अन्तिम run को output मात्र पढ्ने — analyse only the latest run's output.
+  const runOutput = useMemo(() => {
+    let start = 0;
+    for (let i = consoleLines.length - 1; i >= 0; i--) {
+      if (consoleLines[i].kind === 'command') {
+        start = i;
+        break;
+      }
+    }
+    return consoleLines
+      .slice(start)
+      .filter((l) => l.kind === 'stdout' || l.kind === 'stderr')
+      .map((l) => l.text)
+      .join('')
+      .slice(-60_000);
+  }, [consoleLines]);
+  const tips = useMemo(() => {
+    const root = project?.rootPath.replace(/\//g, '\\').toLowerCase();
+    // Project भित्रका फाइललाई छोटो path मा देखाउने — show files inside the project with a short relative path.
+    return analyzeOutput(runOutput).map((t) => {
+      if (!t.file || !root) return t;
+      const norm = t.file.replace(/\//g, '\\');
+      return norm.toLowerCase().startsWith(root + '\\')
+        ? { ...t, file: norm.slice(root.length + 1) }
+        : t;
+    });
+  }, [runOutput, project]);
+  const [reveal, setReveal] = useState<{
+    path: string;
+    line: number;
+    column: number;
+  } | null>(null);
+
+  const resolveTipPath = useCallback(
+    (file: string) => {
+      const sep = project?.rootPath.includes('\\') ? '\\' : '/';
+      const clean = file.replace(/^file:\/\/\/?/, '').replace(/[\\/]/g, sep);
+      const absolute = /^[A-Za-z]:[\\/]/.test(clean) || clean.startsWith('/');
+      return absolute || !project ? clean : `${project.rootPath}${sep}${clean}`;
+    },
+    [project],
+  );
+  const samePath = (a: string, b: string) =>
+    a.replace(/\//g, '\\').toLowerCase() ===
+    b.replace(/\//g, '\\').toLowerCase();
+
+  const openTip = async (tip: FixTip) => {
+    if (!tip.file) return;
+    const full = resolveTipPath(tip.file);
+    const existing = tabs.find((t) => samePath(t.path, full));
+    if (existing) setActivePath(existing.path);
+    else
+      await openFile({ name: baseName(full), path: full, isDirectory: false });
+    setReveal({
+      path: existing?.path ?? full,
+      line: tip.line ?? 1,
+      column: tip.column ?? 1,
+    });
+  };
+
+  // फाइल खुलेपछि ठ्याक्कै त्यो लाइनमा पुग्ने — jump to the error line once its file is showing.
+  useEffect(() => {
+    if (!reveal || !activePath || !samePath(reveal.path, activePath)) return;
+    const timer = setTimeout(() => {
+      const editor = editorRef.current;
+      const model = editor?.getModel();
+      if (!editor || !model) return;
+      const line = Math.min(Math.max(1, reveal.line), model.getLineCount());
+      editor.revealLineInCenter(line);
+      editor.setPosition({
+        lineNumber: line,
+        column: Math.max(1, reveal.column),
+      });
+      editor.focus();
+      setReveal(null);
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [reveal, activePath]);
+
+  // Editor मा error भएको लाइनमा रातो रेखा — red squiggles on the error lines in the editor.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const model = editorRef.current?.getModel();
+      if (!model || !activePath) return;
+      const markers = tips
+        .filter(
+          (t) =>
+            t.file && t.line && samePath(resolveTipPath(t.file), activePath),
+        )
+        .map((t) => {
+          const line = Math.min(t.line ?? 1, model.getLineCount());
+          return {
+            severity: monaco.MarkerSeverity.Error,
+            message: `${t.kind}: ${t.message}
+💡 ${tr(t.tip)}`,
+            startLineNumber: line,
+            startColumn: t.column ?? 1,
+            endLineNumber: line,
+            endColumn: model.getLineMaxColumn(line),
+          };
+        });
+      monaco.editor.setModelMarkers(model, 'studio-run', markers);
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [tips, activePath, resolveTipPath, tabs.length]);
+
+  const askGuruAboutTip = (tip: FixTip) => {
+    setPendingTutor({
+      mode: 'fix',
+      label: `${tr('🩺 यो error बुझाऊ · Explain this error')}: ${tip.kind}`,
+      prompt: `Explain this error and exactly how to fix it: ${tip.kind}: ${tip.message}${tip.file ? ` (in ${tip.file}${tip.line ? `, line ${tip.line}` : ''})` : ''}.`,
+      context: getContext(),
+    });
+  };
 
   const currentPreset = useMemo(
     () => presets.find((p) => p.id === presetId),
@@ -441,10 +578,10 @@ export default function App() {
       <header className="flex items-center gap-2 border-b border-slate-700 bg-slate-950 px-3 py-2">
         <span className="mr-1 font-bold text-sky-300">🎓 Studio</span>
         <button className="btn-ghost" onClick={() => void openFolder()}>
-          📁 खोल · Open
+          {tr('📁 खोल · Open')}
         </button>
         <button className="btn-ghost" onClick={() => setDialog('newFlutter')}>
-          ✨ नयाँ एप · New app
+          {tr('✨ नयाँ एप · New app')}
         </button>
         {project && (
           <span
@@ -462,14 +599,14 @@ export default function App() {
               onChange={(e) => setPresetId(e.target.value)}
               title={
                 currentPreset
-                  ? `कमाण्ड · Command: ${currentPreset.commandLine}`
+                  ? tr(`कमाण्ड · Command: ${currentPreset.commandLine}`)
                   : ''
               }
               className="max-w-72 rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-sm text-slate-100 outline-none"
             >
               {presets.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.labelNe} · {p.labelEn}
+                  {tr(`${p.labelNe} · ${p.labelEn}`)}
                 </option>
               ))}
             </select>
@@ -478,7 +615,7 @@ export default function App() {
               disabled={!presetId}
               onClick={() => void runSelected()}
             >
-              ▶ चलाऊ · Run
+              {tr('▶ चलाऊ · Run')}
             </button>
           </div>
         )}
@@ -488,9 +625,10 @@ export default function App() {
             onClick={() => void saveActive()}
             title="Ctrl+S"
           >
-            💾 सेभ · Save
+            {tr('💾 सेभ · Save')}
           </button>
         )}
+        <LangSwitch value={uiLang} onChange={changeLang} />
         <AccountMenu account={account} />
         <button
           className="btn-ghost"
@@ -548,6 +686,9 @@ export default function App() {
                     onClear={() => setConsoleLines([])}
                     onAskGuru={askGuruAboutOutput}
                     onHide={() => setConsoleOpen(false)}
+                    tips={tips}
+                    onOpenTip={(tip) => void openTip(tip)}
+                    onAskTip={askGuruAboutTip}
                   />
                 </div>
               ) : (
@@ -555,8 +696,8 @@ export default function App() {
                   className="border-t border-slate-700 bg-slate-950 px-3 py-1 text-left text-xs text-slate-400 hover:text-slate-200"
                   onClick={() => setConsoleOpen(true)}
                 >
-                  ▴ 🖥️ नतिजा देखाऊ · Show output{' '}
-                  {running ? '● चल्दैछ · running' : ''}
+                  {tr('▴ 🖥️ नतिजा देखाऊ · Show output')}{' '}
+                  {running ? tr('● चल्दैछ · running') : ''}
                 </button>
               )}
             </main>
@@ -593,7 +734,7 @@ export default function App() {
           <div
             role="separator"
             aria-orientation="vertical"
-            title="तानेर चौडाइ बदल्नुहोस् · Drag to resize"
+            title={tr('तानेर चौडाइ बदल्नुहोस् · Drag to resize')}
             className="absolute top-0 -left-1 z-20 h-full w-2 cursor-col-resize hover:bg-sky-500/40"
             onPointerDown={startGuruResize}
           />
@@ -609,25 +750,31 @@ export default function App() {
       {/* Status bar */}
       <footer className="flex items-center gap-3 border-t border-slate-700 bg-slate-950 px-3 py-0.5 text-[11px] text-slate-400">
         <span>
-          {project ? project.rootPath : 'कुनै project खुलेको छैन · No project open'}
+          {project
+            ? project.rootPath
+            : tr('कुनै project खुलेको छैन · No project open')}
         </span>
         <div className="flex-1" />
         {dirtyCount > 0 && (
           <span className="text-amber-400">
-            ● {dirtyCount} सेभ बाँकी · unsaved
+            {tr(`● ${dirtyCount} सेभ बाँकी · unsaved`)}
           </span>
         )}
         {activeTab && <span>{activeTab.language}</span>}
         <span>
           {account.status?.loggedIn
-            ? `🧑‍🏫 Guru तयार · ready (${account.status.email ?? 'Claude Code'})`
-            : '🧑‍🏫 Guru: Claude Code मा login गर्नुहोस् · sign in to Claude Code'}
+            ? tr(
+                `🧑‍🏫 Guru तयार · ready (${account.status.email ?? 'Claude Code'})`,
+              )
+            : tr(
+                '🧑‍🏫 Guru: Claude Code मा login गर्नुहोस् · sign in to Claude Code',
+              )}
         </span>
       </footer>
 
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-sky-900/40 text-2xl font-semibold text-white">
-          📂 फोल्डर यहाँ छोड्नुहोस् · Drop the folder here
+          {tr('📂 फोल्डर यहाँ छोड्नुहोस् · Drop the folder here')}
         </div>
       )}
 
@@ -637,16 +784,16 @@ export default function App() {
             toast.error ? 'bg-rose-700 text-white' : 'bg-emerald-700 text-white'
           }`}
         >
-          {toast.text}
+          {tr(toast.text)}
         </div>
       )}
 
       {dialog === 'newFile' && project && (
         <PromptDialog
-          title="नयाँ फाइल · New file"
-          hint={`फोल्डर · Folder: ${baseName(selectedDir)}`}
+          title={tr('नयाँ फाइल · New file')}
+          hint={tr(`फोल्डर · Folder: ${baseName(selectedDir)}`)}
           placeholder="main.dart"
-          confirmLabel="बनाऊ · Create"
+          confirmLabel={tr('बनाऊ · Create')}
           onClose={() => setDialog(null)}
           onSubmit={async (name) => {
             const created = await window.studio.createFile(selectedDir, name);
@@ -661,10 +808,10 @@ export default function App() {
       )}
       {dialog === 'newFolder' && project && (
         <PromptDialog
-          title="नयाँ फोल्डर · New folder"
-          hint={`भित्र · Inside: ${baseName(selectedDir)}`}
+          title={tr('नयाँ फोल्डर · New folder')}
+          hint={tr(`भित्र · Inside: ${baseName(selectedDir)}`)}
           placeholder="screens"
-          confirmLabel="बनाऊ · Create"
+          confirmLabel={tr('बनाऊ · Create')}
           onClose={() => setDialog(null)}
           onSubmit={async (name) => {
             const created = await window.studio.createFolder(selectedDir, name);
@@ -675,10 +822,12 @@ export default function App() {
       )}
       {dialog === 'newFlutter' && (
         <PromptDialog
-          title="✨ नयाँ Flutter एप · New Flutter app"
-          hint="नाम सानो अंग्रेजी अक्षरमा, खाली ठाउँको सट्टा _ (जस्तै nepali_quiz)। त्यसपछि project राख्ने फोल्डर छान्नुहोस्। — Lowercase name with _ ; then choose where to save it."
+          title={tr('✨ नयाँ Flutter एप · New Flutter app')}
+          hint={tr(
+            'नाम सानो अंग्रेजी अक्षरमा, खाली ठाउँको सट्टा _ (जस्तै nepali_quiz)। त्यसपछि project राख्ने फोल्डर छान्नुहोस्। — Lowercase name with _ ; then choose where to save it.',
+          )}
           placeholder="my_first_app"
-          confirmLabel="बनाऊ · Create"
+          confirmLabel={tr('बनाऊ · Create')}
           onClose={() => setDialog(null)}
           onSubmit={createFlutter}
         />

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { baseName, forgetRecent, loadRecent } from '../lib/helpers';
+import { tr } from '../i18n';
 
 interface Props {
   onOpenFolder: () => void;
@@ -16,7 +17,7 @@ export function Welcome({ onOpenFolder, onNewFlutter, onOpenRecent }: Props) {
           Simple Coding Studio
         </h1>
         <p className="mt-1 text-center text-slate-400">
-          सजिलो कोडिङ स्टुडियो · A friendly place to learn coding
+          {tr('सजिलो कोडिङ स्टुडियो · A friendly place to learn coding')}
         </p>
 
         <div className="mt-8 rounded-2xl border-2 border-dashed border-slate-600 bg-slate-800/40 p-8 text-center">
@@ -32,13 +33,13 @@ export function Welcome({ onOpenFolder, onNewFlutter, onOpenRecent }: Props) {
               className="btn-primary px-5 py-2.5 text-base"
               onClick={onOpenFolder}
             >
-              📁 फोल्डर खोल · Open folder
+              {tr('📁 फोल्डर खोल · Open folder')}
             </button>
             <button
               className="btn-secondary px-5 py-2.5 text-base"
               onClick={onNewFlutter}
             >
-              ✨ नयाँ Flutter एप · New Flutter app
+              {tr('✨ नयाँ Flutter एप · New Flutter app')}
             </button>
           </div>
         </div>
@@ -46,7 +47,7 @@ export function Welcome({ onOpenFolder, onNewFlutter, onOpenRecent }: Props) {
         {recent.length > 0 && (
           <div className="mt-8">
             <h2 className="mb-2 text-sm font-semibold text-slate-400 uppercase">
-              हालै खोलेका · Recent
+              {tr('हालै खोलेका · Recent')}
             </h2>
             <ul className="divide-y divide-slate-800 rounded-xl border border-slate-700 bg-slate-800/40">
               {recent.map((p) => (
@@ -66,7 +67,7 @@ export function Welcome({ onOpenFolder, onNewFlutter, onOpenRecent }: Props) {
                   </button>
                   <button
                     className="hidden text-xs text-slate-500 group-hover:block hover:text-rose-400"
-                    title="सूचीबाट हटाऊ · Remove from list"
+                    title={tr('सूचीबाट हटाऊ · Remove from list')}
                     onClick={() => {
                       forgetRecent(p);
                       setRecent(loadRecent());

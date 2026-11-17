@@ -91,6 +91,15 @@ function buildPrompt(req: AiRequest): string {
   }
   parts.push(`The learner's new message:\n${last.content}`);
   if (extra) parts.push(extra);
+  if (req.answerLang === 'ne') {
+    parts.push(
+      'Answer language: write the whole answer in simple Nepali (Devanagari) only. Keep code, file names and technical terms in English. Do not add an English section.',
+    );
+  } else if (req.answerLang === 'en') {
+    parts.push(
+      'Answer language: write the whole answer in simple English only. Do not add a Nepali section.',
+    );
+  }
   return parts.join('\n\n---\n\n');
 }
 

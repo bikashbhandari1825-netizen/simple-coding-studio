@@ -6,6 +6,7 @@ import {
 } from '../../shared/types';
 import { errorText } from '../lib/helpers';
 import { LoginCard, type ClaudeAccount } from './ClaudeAccount';
+import { tr } from '../i18n';
 
 export function Modal({
   title,
@@ -79,7 +80,7 @@ export function PromptDialog({
 
   return (
     <Modal title={title} onClose={onClose}>
-      {hint && <p className="mb-3 text-sm text-slate-400">{hint}</p>}
+      {hint && <p className="mb-3 text-sm text-slate-400">{tr(hint)}</p>}
       <input
         ref={inputRef}
         value={value}
@@ -88,17 +89,17 @@ export function PromptDialog({
         onKeyDown={(e) => e.key === 'Enter' && void submit()}
         className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-sky-500"
       />
-      {error && <p className="mt-2 text-sm text-rose-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-rose-400">{tr(error)}</p>}
       <div className="mt-4 flex justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>
-          रद्द · Cancel
+          {tr('रद्द · Cancel')}
         </button>
         <button
           className="btn-primary"
           disabled={busy || !value.trim()}
           onClick={() => void submit()}
         >
-          {busy ? 'पर्खनुहोस्… · Working…' : confirmLabel}
+          {busy ? tr('पर्खनुहोस्… · Working…') : confirmLabel}
         </button>
       </div>
     </Modal>
@@ -123,23 +124,22 @@ export function SettingsDialog({
   const changeModel = async (model: AiModelId) => {
     try {
       onChange(await window.studio.setModel(model));
-      setMessage({ ok: true, text: 'Model बदलियो · Model changed' });
+      setMessage({ ok: true, text: tr('Model बदलियो · Model changed') });
     } catch (err) {
       setMessage({ ok: false, text: errorText(err) });
     }
   };
 
   return (
-    <Modal title="⚙️ सेटिङ · Settings" onClose={onClose}>
+    <Modal title={tr('⚙️ सेटिङ · Settings')} onClose={onClose}>
       <label className="mb-2 block text-sm font-medium text-slate-300">
         Claude account (Claude Code)
       </label>
       <LoginCard account={account} />
       <p className="mt-2 text-[11px] leading-4 text-slate-400">
-        Guru ले यो computer मा login भएको Claude Code प्रयोग गर्छ, त्यसैले तपाईंको
-        Claude subscription बाटै चल्छ। API key वा छुट्टै credit चाहिँदैन। — Guru uses
-        the Claude Code sign-in on this computer, so it runs on your Claude
-        subscription: no API key, no separate credits.
+        {tr(
+          'Guru ले यो computer मा login भएको Claude Code प्रयोग गर्छ, त्यसैले तपाईंको Claude subscription बाटै चल्छ। API key वा छुट्टै credit चाहिँदैन। — Guru uses the Claude Code sign-in on this computer, so it runs on your Claude subscription: no API key, no separate credits.',
+        )}
       </p>
 
       <label className="mt-5 mb-1 block text-sm font-medium text-slate-300">
@@ -161,12 +161,12 @@ export function SettingsDialog({
         <p
           className={`mt-3 text-sm ${message.ok ? 'text-emerald-400' : 'text-rose-400'}`}
         >
-          {message.text}
+          {tr(message.text)}
         </p>
       )}
       <div className="mt-5 flex justify-end">
         <button className="btn-ghost" onClick={onClose}>
-          बन्द · Close
+          {tr('बन्द · Close')}
         </button>
       </div>
     </Modal>

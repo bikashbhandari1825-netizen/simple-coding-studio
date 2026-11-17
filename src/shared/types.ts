@@ -64,6 +64,8 @@ export interface AiRequest {
   mode: AiMode;
   messages: AiChatMessage[];
   context?: AiContext;
+  /** Guru ले कुन भाषामा जवाफ दिने — Which language Guru should answer in. */
+  answerLang?: 'ne' | 'en' | 'both';
 }
 
 export type AiErrorKind = 'auth' | 'limit';

@@ -63,6 +63,12 @@ npm.cmd run make
 
 "Chrome मा चलाऊ" अहिले नै काम गर्छ — Running in Chrome works already.
 
+## नयाँ सुविधाहरू (New features)
+
+- **ने / EN / ने+EN:** माथि दायाँको बटनले पूरै app को भाषा तुरुन्तै बदल्छ। Guru को जवाफ पनि त्यही भाषामा आउँछ।
+- **🎤 Live voice:** बोल्दै गर्दा शब्दहरू text box मा आउँछन् र आवाजअनुसार तरंग (waveform) हल्लिन्छ। आवाज यही computer मा GPU (WebGPU) बाट Whisper ले अक्षरमा बदल्छ, कतै पठाइँदैन। ⚡ = छिटो (whisper-base), 🎯 = बढी सही (whisper-small, नेपालीका लागि राम्रो)।
+- **Guru को Fix Tip:** Run गर्दा Python / Dart / Flutter / Node error आएमा output मुनि तुरुन्तै कुन फाइलको कुन लाइनमा के गडबड भयो र कसरी सच्याउने देखिन्छ। "फाइल खोल" थिच्दा ठ्याक्कै त्यो लाइनमा पुगिन्छ र editor मा रातो रेखा देखिन्छ।
+
 ---
 
 ## Project को बनावट (Project structure)
@@ -81,7 +87,9 @@ src/
 └─ renderer/
    ├─ App.tsx              मुख्य layout
    ├─ components/          FileTree, EditorArea, ConsolePanel, TutorPanel, Dialogs, Welcome
-   └─ lib/helpers.ts       साना सहयोगी functions
+   ├─ i18n.ts              ने / EN / दुवै भाषा
+   ├─ voice/               Live voice (Whisper worker, waveform)
+   └─ lib/                 helpers, errorAnalyzer (Fix Tips)
 ```
 
 **Tech:** Electron Forge + Vite, React 19, TypeScript, Tailwind CSS 4, Monaco Editor, Claude Code CLI, Whisper (transformers.js) voice.

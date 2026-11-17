@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AiErrorKind, ClaudeStatus } from '../../shared/types';
 import { errorText } from '../lib/helpers';
+import { tr } from '../i18n';
 
 const LOGIN_WAIT_MS = 10 * 60 * 1000;
 
@@ -61,7 +62,9 @@ export function useClaudeAccount(): ClaudeAccount {
       const current = status ?? (await refresh());
       if (switchAccount && current.loggedIn) {
         const ok = window.confirm(
-          'यसले यो computer को Claude Code बाट पुरानो account logout गरेर नयाँ account जोड्छ (terminal मा चलिरहेको Claude Code मा पनि असर पर्छ)। अगाडि बढ्ने? — This logs Claude Code on this computer out of the current account and signs in again (it also affects Claude Code running in your terminals). Continue?',
+          tr(
+            'यसले यो computer को Claude Code बाट पुरानो account logout गरेर नयाँ account जोड्छ (terminal मा चलिरहेको Claude Code मा पनि असर पर्छ)। अगाडि बढ्ने? — This logs Claude Code on this computer out of the current account and signs in again (it also affects Claude Code running in your terminals). Continue?',
+          ),
         );
         if (!ok) return;
       }
@@ -80,7 +83,9 @@ export function useClaudeAccount(): ClaudeAccount {
 
   const logout = useCallback(async () => {
     const ok = window.confirm(
-      'यो computer को Claude Code बाट logout गर्ने? (terminal मा चलिरहेको Claude Code बाट पनि logout हुन्छ) — Log Claude Code out on this computer? (This also logs out Claude Code in your terminals.)',
+      tr(
+        'यो computer को Claude Code बाट logout गर्ने? (terminal मा चलिरहेको Claude Code बाट पनि logout हुन्छ) — Log Claude Code out on this computer? (This also logs out Claude Code in your terminals.)',
+      ),
     );
     if (!ok) return;
     setError('');
@@ -106,9 +111,9 @@ function WaitingBox({ account }: { account: ClaudeAccount }) {
   return (
     <div className="rounded-lg border border-sky-700 bg-sky-950/50 p-3 text-sm text-sky-100">
       <p className="animate-pulse">
-        ⏳ कालो terminal window र browser खुल्यो। आफूले चाहेको email छानेर Authorize
-        थिच्नुहोस्। — A terminal window and your browser opened; choose your email
-        and authorize.
+        {tr(
+          '⏳ कालो terminal window र browser खुल्यो। आफूले चाहेको email छानेर Authorize थिच्नुहोस्। — A terminal window and your browser opened; choose your email and authorize.',
+        )}
       </p>
       <button
         className="btn-ghost mt-2"
@@ -117,7 +122,7 @@ function WaitingBox({ account }: { account: ClaudeAccount }) {
           void account.refresh();
         }}
       >
-        ✓ सकियो · Done
+        {tr('✓ सकियो · Done')}
       </button>
     </div>
   );
@@ -134,7 +139,6 @@ const planLabel = (s: ClaudeStatus) =>
 /** Login नभएको बेला देखिने कार्ड (Guru र Settings) — The sign-in card shown in Guru and Settings. */
 export function LoginCard({
   account,
-  compact = false,
 }: {
   account: ClaudeAccount;
   compact?: boolean;
@@ -144,14 +148,15 @@ export function LoginCard({
   if (!s)
     return (
       <p className="text-xs text-slate-400">
-        Claude Code जाँच्दै… · Checking Claude Code…
+        {tr('Claude Code जाँच्दै… · Checking Claude Code…')}
       </p>
     );
   if (!s.installed) {
     return (
       <div className="rounded-lg border border-amber-700 bg-amber-950/50 p-3 text-sm text-amber-200">
-        Claude Code यो computer मा भेटिएन। पहिले install गर्नुहोस्। — Claude Code is
-        not installed on this computer.{' '}
+        {tr(
+          'Claude Code यो computer मा भेटिएन। पहिले install गर्नुहोस्। — Claude Code is not installed on this computer.',
+        )}{' '}
         <a
           href="https://claude.com/claude-code"
           target="_blank"
@@ -166,7 +171,7 @@ export function LoginCard({
   if (s.loggedIn) {
     return (
       <div className="rounded-lg border border-emerald-700 bg-emerald-950/40 p-3 text-sm text-emerald-200">
-        ✅ Claude Code जोडिएको छ · Connected
+        {tr('✅ Claude Code जोडिएको छ · Connected')}
         <div className="mt-1 text-xs text-emerald-100/80">{planLabel(s)}</div>
         <div className="mt-2 flex flex-wrap gap-2">
           <button className="chip" onClick={() => void account.login(true)}>
@@ -180,7 +185,7 @@ export function LoginCard({
           </button>
         </div>
         {account.error && (
-          <p className="mt-2 text-xs text-rose-400">{account.error}</p>
+          <p className="mt-2 text-xs text-rose-400">{tr(account.error)}</p>
         )}
       </div>
     );
@@ -194,13 +199,12 @@ export function LoginCard({
         🔗 Login with Claude
       </button>
       <p className="mt-1.5 text-[11px] leading-4 text-slate-400">
-        Terminal र browser खुल्छ, आफ्नो email छानेर Authorize थिच्नुहोस्। तपाईंको Claude
-        subscription बाटै चल्छ, API key चाहिँदैन। — Opens a terminal and your
-        browser; uses your Claude subscription, no API key.
-        {!compact && ' '}
+        {tr(
+          'Terminal र browser खुल्छ, आफ्नो email छानेर Authorize थिच्नुहोस्। तपाईंको Claude subscription बाटै चल्छ, API key चाहिँदैन। — Opens a terminal and your browser; uses your Claude subscription, no API key.',
+        )}
       </p>
       {account.error && (
-        <p className="mt-2 text-xs text-rose-400">{account.error}</p>
+        <p className="mt-2 text-xs text-rose-400">{tr(account.error)}</p>
       )}
     </div>
   );
@@ -229,8 +233,8 @@ export function AccountMenu({ account }: { account: ClaudeAccount }) {
         disabled={!s.installed}
         title={
           s.installed
-            ? 'Claude Code मा login · Sign in to Claude Code'
-            : 'Claude Code install गर्नुहोस् · Install Claude Code'
+            ? tr('Claude Code मा login · Sign in to Claude Code')
+            : tr('Claude Code install गर्नुहोस् · Install Claude Code')
         }
         onClick={() => void account.login(false)}
       >
@@ -264,7 +268,7 @@ export function AccountMenu({ account }: { account: ClaudeAccount }) {
                   void account.login(true);
                 }}
               >
-                🔄 Switch Account · अर्को email
+                {tr('🔄 Switch Account · अर्को email')}
               </button>
               <button
                 className="w-full rounded px-2 py-1.5 text-left text-sm text-rose-300 hover:bg-slate-700"
@@ -278,7 +282,9 @@ export function AccountMenu({ account }: { account: ClaudeAccount }) {
             </>
           )}
           {account.error && (
-            <p className="mt-1 px-2 text-xs text-rose-400">{account.error}</p>
+            <p className="mt-1 px-2 text-xs text-rose-400">
+              {tr(account.error)}
+            </p>
           )}
         </div>
       )}

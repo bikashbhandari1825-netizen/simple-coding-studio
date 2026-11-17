@@ -1,6 +1,7 @@
 import Editor, { type OnMount } from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { useEffect, useRef } from 'react';
+import { tr } from '../i18n';
 
 export interface OpenTab {
   path: string;
@@ -75,7 +76,9 @@ export function EditorArea({
               <span>{tab.name}</span>
               <button
                 className="w-4 text-center text-slate-500 hover:text-slate-100"
-                title={dirty ? 'सेभ भएको छैन · Unsaved — close' : 'बन्द · Close'}
+                title={
+                  dirty ? tr('सेभ भएको छैन · Unsaved — close') : tr('बन्द · Close')
+                }
                 onClick={(e) => {
                   e.stopPropagation();
                   onClose(tab.path);
