@@ -30,7 +30,7 @@ export type VoiceRequest =
     };
 export type VoiceResponse =
   | { type: 'loading'; progress: number }
-  | { type: 'ready'; device: 'webgpu' | 'wasm' }
+  | { type: 'ready'; device: 'webgpu' | 'wasm'; quality: VoiceQuality }
   | { type: 'result'; id: number; text: string; ms: number }
   | { type: 'error'; id?: number; message: string };
 
@@ -149,7 +149,7 @@ self.addEventListener('message', (event: MessageEvent<VoiceRequest>) => {
     queue = queue.then(async () => {
       try {
         const { device } = await load(req.quality);
-        post({ type: 'ready', device });
+        post({ type: 'ready', device, quality: req.quality });
       } catch (err) {
         post({
           type: 'error',
@@ -163,7 +163,7 @@ self.addEventListener('message', (event: MessageEvent<VoiceRequest>) => {
   queue = queue.then(async () => {
     try {
       const { asr, device } = await load(req.quality);
-      post({ type: 'ready', device });
+      post({ type: 'ready', device, quality: req.quality });
       const t0 = performance.now();
       const output = await asr(req.audio, {
         language: req.language,

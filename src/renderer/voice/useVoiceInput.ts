@@ -10,24 +10,23 @@ export type { VoiceLanguage, VoiceQuality };
 
 export type VoiceState =
   | { stage: 'idle' }
-  | { stage: 'loading'; progress: number }
-  | { stage: 'recording'; seconds: number }
-  | { stage: 'finishing' };
+  | { stage: 'recording'; seconds: number };
 
 const SAMPLE_RATE = 16000;
 const MAX_SECONDS = 120;
 /** यति चुप रहेपछि टुक्रा पक्का गर्ने — commit a segment after this much silence. */
-const COMMIT_SILENCE_S = 0.6;
-/** लामो बोलाइलाई यति सेकेन्डमा टुक्र्याउने (छोटो टुक्रा = छिटो) — split long speech; shorter segments are faster. */
+const COMMIT_SILENCE_S = 0.7;
+/** छोटो टुक्रा = छिटो — split long speech so each pass stays fast. */
 const MAX_SEGMENT_S = 5;
-/** बोल्दै गर्दा हरेक यति सेकेन्डमा नयाँ शब्द देखाउने — refresh live words this often while speaking. */
-const LIVE_STEP_S = 0.4;
-/** रोक्दा यतिभन्दा कम नयाँ आवाज भए live पाठ नै अन्तिम मान्ने — on stop, reuse the live text if this little audio is new. */
-const REUSE_TAIL_S = 0.5;
+/** बोल्दै गर्दा नयाँ शब्द देखाउने अन्तराल — refresh live words this often while speaking. */
+const LIVE_STEP_S = 0.35;
+/** बोली सुरु हुनुअघिको यति आवाज पनि राख्ने (पहिलो अक्षर नकाटियोस्) — keep this much audio before speech starts. */
+const PRE_ROLL_S = 0.5;
+/** बोली मान्ने न्यूनतम स्तर (laptop mic मा बिस्तारै बोल्दा पनि) — minimum level counted as speech, low enough for quiet voices. */
+const MIN_SPEECH_RMS = 0.0035;
 
 const LANG_KEY = 'studio.voiceLanguage';
 const QUALITY_KEY = 'studio.voiceQuality';
-const USED_KEY = 'studio.voiceUsed';
 
 function stored<T extends string>(
   key: string,
@@ -51,7 +50,15 @@ function store(key: string, value: string) {
 
 // Whisper ले चुप आवाजमा कहिलेकाहीं बनाउने झूटा शब्द — phrases Whisper invents on near-silence.
 const HALLUCINATION =
-  /^\s*(\[.*\]|\(.*\)|thank you\.?|thanks\.?|thanks for watching\.?|you|bye\.?|\.+)\s*$/i;
+  /^\s*(\[.*\]|\(.*\)|thank you\.?|thanks\.?|thanks for watching\.?|you|bye\.?|\.+|।+|धन्यवाद[।!.]?)\s*$/i;
+
+interface Job {
+  session: Session;
+  kind: 'live' | 'commit';
+  to: number;
+  /** commit भएको टुक्राको क्रम — order of the committed segment */
+  index?: number;
+}
 
 interface Session {
   ctx: AudioContext;
@@ -59,34 +66,40 @@ interface Session {
   proc: ScriptProcessorNode;
   chunks: Float32Array[];
   total: number;
-  /** अहिलेको टुक्रा कहाँबाट सुरु — start of the current (uncommitted) segment, in samples */
   segStart: number;
-  /** अन्तिम पटक बोलेको ठाउँ — last sample index that held speech */
   lastVoice: number;
   segHasSpeech: boolean;
   lastLiveAt: number;
-  /** पृष्ठभूमि आवाजको स्तर — adaptive background-noise level */
   noise: number;
-  committed: string;
+  /** पक्का भएका टुक्राहरू (क्रम अनुसार) — committed segment texts, in order */
+  segments: string[];
   interim: string;
-  /** live पाठले कहाँसम्मको आवाज समेटेको — how far (in samples) the live text covers */
   interimTo: number;
-  busy: boolean;
-  nextId: number;
-  pending: Map<number, { commit: boolean; to: number }>;
-  stopping: boolean;
-  finalSent: boolean;
+  liveBusy: boolean;
+  openJobs: number;
+  stopped: boolean;
+  /** रोक्दा box मा राखिएको पाठ — the text placed in the box at stop time */
+  shownAtStop: string | null;
   timer: ReturnType<typeof setInterval>;
   startedAt: number;
 }
 
 /**
- * 🎤 Live voice typing: बोल्दै गर्दा शब्दहरू तुरुन्तै text box मा आउँछन् (GPU मा Whisper)।
- * Live voice typing: words appear while you speak (Whisper on the GPU), and the waveform follows your voice.
+ * 🎤 Live voice typing (Whisper, GPU)।
+ * - बोल्दै गर्दा शब्दहरू box मा आउँछन् (⚡ छिटो model ले)।
+ * - 🎤 रोक्नासाथ (≈0s) पाठ box मा रहन्छ र mic मुक्त हुन्छ; अन्तिम सुधार पछाडि हुन्छ।
  *
- * onLive(text, final) — यो पटक बोलेको पूरा पाठ — the full dictated text of this session so far.
+ * - Words appear while you speak (using the fast model).
+ * - Pressing 🎤 again stops instantly: the text stays in the box and the mic is free; the final
+ *   clean-up runs in the background and only replaces the text if you have not changed it.
+ *
+ * onLive(text) — बोल्दै गर्दाको पूरा पाठ — the full dictated text while recording.
+ * onFinal(shown, better) — रोकेपछिको सुधारिएको पाठ — improved text after stopping.
  */
-export function useVoiceInput(onLive: (text: string, final: boolean) => void) {
+export function useVoiceInput(
+  onLive: (text: string) => void,
+  onFinal: (shown: string, better: string) => void,
+) {
   const [state, setState] = useState<VoiceState>({ stage: 'idle' });
   const [language, setLanguageState] = useState<VoiceLanguage>(() =>
     stored(LANG_KEY, ['nepali', 'english'] as const, 'nepali'),
@@ -95,35 +108,28 @@ export function useVoiceInput(onLive: (text: string, final: boolean) => void) {
     stored(QUALITY_KEY, ['fast', 'accurate'] as const, 'fast'),
   );
   const [device, setDevice] = useState<'webgpu' | 'wasm' | null>(null);
+  /** model कति तयार (null = तयार) — model download/load progress; null once ready */
+  const [modelProgress, setModelProgress] = useState<number | null>(0);
+  const [refining, setRefining] = useState(false);
   const [error, setError] = useState('');
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
 
   const workerRef = useRef<Worker | null>(null);
-  const onLiveRef = useRef(onLive);
-  onLiveRef.current = onLive;
+  const cbRef = useRef({ onLive, onFinal });
+  cbRef.current = { onLive, onFinal };
   const settingsRef = useRef({ language, quality });
   settingsRef.current = { language, quality };
   const session = useRef<Session | null>(null);
+  const jobs = useRef(new Map<number, Job>());
+  const nextId = useRef(1);
+  const readyModels = useRef(new Set<VoiceQuality>());
 
-  const emit = (s: Session, final: boolean) => {
-    const text = [s.committed, s.interim]
+  const textOf = (s: Session, withInterim: boolean) =>
+    [...s.segments, withInterim ? s.interim : '']
       .filter(Boolean)
       .join(' ')
       .replace(/\s+/g, ' ')
       .trim();
-    onLiveRef.current(text, final);
-  };
-
-  const finish = useCallback((s: Session) => {
-    if (session.current !== s) return;
-    clearInterval(s.timer);
-    s.interim = '';
-    emit(s, true);
-    session.current = null;
-    setAnalyser(null);
-    setState({ stage: 'idle' });
-    void s.ctx.close();
-  }, []);
 
   const slice = (s: Session, from: number, to: number) => {
     const out = new Float32Array(Math.max(0, to - from));
@@ -142,53 +148,74 @@ export function useVoiceInput(onLive: (text: string, final: boolean) => void) {
     return out;
   };
 
-  const send = (s: Session, commit: boolean, from: number, to: number) => {
+  const send = (
+    s: Session,
+    kind: Job['kind'],
+    from: number,
+    to: number,
+    index?: number,
+  ) => {
     const worker = workerRef.current;
     if (!worker) return;
     const audio = slice(s, from, to);
-    const id = s.nextId++;
-    s.pending.set(id, { commit, to });
-    s.busy = true;
+    const id = nextId.current++;
+    jobs.current.set(id, { session: s, kind, to, index });
+    s.openJobs++;
+    if (kind === 'live') s.liveBusy = true;
     const { language: lang, quality: q } = settingsRef.current;
+    // Live शब्द सधैं छिटो model ले; पक्का गर्ने काम छानिएको model ले — live words always use the fast model.
     const req: VoiceRequest = {
       type: 'transcribe',
       id,
       audio,
       language: lang,
-      quality: q,
+      quality: kind === 'live' ? 'fast' : q,
     };
     worker.postMessage(req, [audio.buffer]);
   };
 
-  /** रोकेपछि: बाँकी टुक्रा मात्र पठाउने, वा live पाठ नै पक्का गर्ने — after stop, finish as fast as possible. */
-  const tryFinish = useCallback(
-    (s: Session) => {
-      if (s.busy) return; // चलिरहेको काम सकिएपछि फेरि बोलाइन्छ — called again when the running job returns
-      if (s.finalSent) {
-        if (s.pending.size === 0) finish(s);
+  /**
+   * टुक्रा पक्का गर्ने। ⚡ मोडमा live नतिजा (सकिएको वा GPU मा चलिरहेको) ले टुक्राको अन्त्यसम्म समेटेको भए फेरि नचलाउने।
+   * Commit a segment. In fast mode, reuse the live result (finished or still running on the GPU)
+   * when it already covers the segment, instead of transcribing the same audio again.
+   */
+  const commitSegment = (s: Session, from: number, end: number) => {
+    const index = s.segments.length;
+    s.segments.push(s.interim); // नतिजा नआउन्जेल live पाठ देखाउने — show the live text until the result arrives
+    const near = end - Math.round(SAMPLE_RATE * 0.3);
+    if (settingsRef.current.quality === 'fast') {
+      for (const job of jobs.current.values()) {
+        if (
+          job.session === s &&
+          job.kind === 'live' &&
+          job.to >= near &&
+          job.to <= end
+        ) {
+          // चलिरहेको live काम नै अन्तिम बन्छ — the running live job becomes the final one.
+          job.kind = 'commit';
+          job.index = index;
+          s.liveBusy = false;
+          s.interim = '';
+          return;
+        }
+      }
+      if (s.interim && s.interimTo >= near) {
+        s.interim = ''; // live पाठ नै पक्का — the live text is final as is
         return;
       }
-      const newSpeechAfterLive = s.lastVoice > s.interimTo + SAMPLE_RATE * 0.15;
-      if (
-        s.interim &&
-        (!newSpeechAfterLive ||
-          s.total - s.interimTo <= SAMPLE_RATE * REUSE_TAIL_S)
-      ) {
-        // Live पाठले सबै बोली समेटिसक्यो: तुरुन्तै पक्का — the live text already covers the speech: commit instantly.
-        s.committed = `${s.committed} ${s.interim}`.trim();
-        s.interim = '';
-        finish(s);
-        return;
-      }
-      if (s.segHasSpeech && s.total - s.segStart > SAMPLE_RATE * 0.2) {
-        s.finalSent = true;
-        send(s, true, s.segStart, s.total);
-        return;
-      }
-      finish(s);
-    },
-    [finish],
-  );
+    }
+    send(s, 'commit', from, end, index);
+    s.interim = '';
+  };
+
+  /** रोकिएको session को सबै काम सकिएपछि सुधारिएको पाठ पठाउने — deliver the improved text once a stopped session is done. */
+  const maybeDeliver = (s: Session) => {
+    if (!s.stopped || s.openJobs > 0 || s.shownAtStop === null) return;
+    const better = textOf(s, false) || s.shownAtStop;
+    cbRef.current.onFinal(s.shownAtStop, better);
+    s.shownAtStop = null;
+    setRefining(false);
+  };
 
   const getWorker = useCallback(() => {
     if (!workerRef.current) {
@@ -199,63 +226,57 @@ export function useVoiceInput(onLive: (text: string, final: boolean) => void) {
       worker.addEventListener('message', (e: MessageEvent<VoiceResponse>) => {
         const msg = e.data;
         if (msg.type === 'loading') {
-          if (!session.current)
-            setState({ stage: 'loading', progress: msg.progress });
+          setModelProgress(msg.progress);
           return;
         }
         if (msg.type === 'ready') {
+          readyModels.current.add(msg.quality);
           setDevice(msg.device);
-          setState((st) => (st.stage === 'loading' ? { stage: 'idle' } : st));
+          setModelProgress(null);
           return;
         }
-        const s = session.current;
+        const job = msg.id !== undefined ? jobs.current.get(msg.id) : undefined;
+        if (msg.id !== undefined) jobs.current.delete(msg.id);
         if (msg.type === 'error') {
-          if (s) {
-            if (msg.id !== undefined) s.pending.delete(msg.id);
-            s.busy = false;
-          }
           setError(`आवाज बुझ्न सकिएन — Could not transcribe: ${msg.message}`);
-          if (s?.stopping) finish(s);
-          else if (!s) setState({ stage: 'idle' });
+          if (job) {
+            job.session.openJobs--;
+            if (job.kind === 'live') job.session.liveBusy = false;
+            maybeDeliver(job.session);
+          }
           return;
         }
-        if (!s) return;
-        const job = s.pending.get(msg.id);
-        s.pending.delete(msg.id);
-        s.busy = false;
+        if (!job) return;
+        const s = job.session;
+        s.openJobs--;
         const text = HALLUCINATION.test(msg.text) ? '' : msg.text.trim();
-        if (job?.commit) {
-          if (text) s.committed = `${s.committed} ${text}`.trim();
-          s.interim = '';
-          s.interimTo = job.to;
-        } else if (job) {
-          s.interim = text;
-          s.interimTo = job.to;
+        if (job.kind === 'commit' && job.index !== undefined) {
+          s.segments[job.index] = text;
+          if (s.interimTo <= job.to) s.interim = '';
+        } else if (job.kind === 'live') {
+          s.liveBusy = false;
+          if (!s.stopped && job.to > s.interimTo) {
+            s.interim = text;
+            s.interimTo = job.to;
+          }
         }
-        emit(s, false);
-        if (s.stopping) tryFinish(s);
+        if (!s.stopped) cbRef.current.onLive(textOf(s, true));
+        maybeDeliver(s);
       });
       workerRef.current = worker;
     }
     return workerRef.current;
-  }, [finish, tryFinish]);
+  }, []);
 
-  // अघिल्लो पटक voice चलाएको भए model पहिल्यै तयार राख्ने — preload the model if voice was used before.
+  // App खुल्नासाथ model तयार राख्ने ताकि 🎤 थिच्दा पर्खनु नपरोस् — preload the models when the app opens.
   useEffect(() => {
-    let used = false;
-    try {
-      used = localStorage.getItem(USED_KEY) === '1';
-    } catch {
-      // ignore
-    }
-    if (!used) return;
     const t = setTimeout(() => {
-      const req: VoiceRequest = {
-        type: 'warmup',
-        quality: settingsRef.current.quality,
-      };
-      getWorker().postMessage(req);
-    }, 2500);
+      const w = getWorker();
+      const warm = (q: VoiceQuality) =>
+        w.postMessage({ type: 'warmup', quality: q } satisfies VoiceRequest);
+      warm('fast');
+      if (settingsRef.current.quality === 'accurate') warm('accurate');
+    }, 1500);
     return () => clearTimeout(t);
   }, [getWorker]);
 
@@ -272,62 +293,84 @@ export function useVoiceInput(onLive: (text: string, final: boolean) => void) {
     [],
   );
 
-  const stop = useCallback(() => {
-    const s = session.current;
-    if (!s || s.stopping) return;
-    s.stopping = true;
-    s.stream.getTracks().forEach((t) => t.stop());
-    s.proc.disconnect();
-    setState({ stage: 'finishing' });
-    tryFinish(s);
-  }, [tryFinish]);
-
   const tick = (s: Session) => {
-    if (session.current !== s || s.stopping) return;
+    if (session.current !== s) return;
     const seconds = (Date.now() - s.startedAt) / 1000;
     setState({ stage: 'recording', seconds: Math.floor(seconds) });
     if (seconds >= MAX_SECONDS) {
       stop();
       return;
     }
-    if (s.busy) return;
     const segLen = s.total - s.segStart;
-    if (segLen < SAMPLE_RATE * 0.3) return;
     const silence = (s.total - s.lastVoice) / SAMPLE_RATE;
     if (
       s.segHasSpeech &&
+      segLen > SAMPLE_RATE * 0.3 &&
       (silence >= COMMIT_SILENCE_S || segLen >= SAMPLE_RATE * MAX_SEGMENT_S)
     ) {
-      // बोलाइ रोकियो: यो टुक्रा पक्का गर्ने — a pause: lock in this segment.
+      // बोलाइ रोकियो: यो टुक्रा पक्का गर्ने (live काम पर्खनु पर्दैन) — a pause: lock in this segment.
       const end = s.total;
-      send(s, true, s.segStart, end);
+      commitSegment(s, s.segStart, end);
+      s.interimTo = end;
       s.segStart = end;
       s.segHasSpeech = false;
       s.lastLiveAt = end;
-    } else if (
+      return;
+    }
+    if (
+      !s.liveBusy &&
       s.segHasSpeech &&
       s.total - s.lastLiveAt >= SAMPLE_RATE * LIVE_STEP_S
     ) {
       // बोल्दै गर्दा अहिलेसम्मका शब्द देखाउने — show the words so far while still speaking.
       s.lastLiveAt = s.total;
-      send(s, false, s.segStart, s.total);
-    } else if (!s.segHasSpeech && segLen > SAMPLE_RATE * 1.5) {
-      // चुप्पीलाई फ्याँक्ने — drop silence so it is never sent.
-      s.segStart = s.total;
-      s.lastLiveAt = s.total;
-      s.interimTo = s.total;
+      send(s, 'live', s.segStart, s.total);
+      return;
+    }
+    if (!s.segHasSpeech && segLen > SAMPLE_RATE * 2) {
+      // लामो चुप्पी फ्याँक्ने, तर अन्तिम आधा सेकेन्ड राख्ने — drop long silence but keep a short pre-roll.
+      s.segStart = Math.max(
+        s.segStart,
+        s.total - Math.round(SAMPLE_RATE * PRE_ROLL_S),
+      );
+      s.lastLiveAt = s.segStart;
     }
   };
+
+  /** 🎤 फेरि थिच्दा तुरुन्तै रोक्ने — stop instantly; the clean-up continues in the background. */
+  const stop = useCallback(() => {
+    const s = session.current;
+    if (!s) return;
+    clearInterval(s.timer);
+    s.stream.getTracks().forEach((t) => t.stop());
+    s.proc.disconnect();
+    s.stopped = true;
+    session.current = null;
+    setAnalyser(null);
+    setState({ stage: 'idle' });
+    void s.ctx.close();
+
+    // बाँकी टुक्रा पक्का गर्न पठाउने — send the unfinished tail for a final pass.
+    if (s.segHasSpeech && s.total - s.segStart > SAMPLE_RATE * 0.25) {
+      commitSegment(s, s.segStart, s.total);
+    }
+    s.shownAtStop = textOf(s, true);
+    cbRef.current.onLive(s.shownAtStop);
+    if (s.openJobs > 0) setRefining(true);
+    maybeDeliver(s);
+  }, []);
 
   const start = useCallback(async () => {
     setError('');
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
+        // noiseSuppression बन्द: Windows को noise-suppression ले बिस्तारै बोलेको आवाज पनि काट्छ।
+        // Noise suppression off: it tends to clip quiet speech; echo cancellation and auto gain stay on.
         audio: {
           channelCount: 1,
           echoCancellation: true,
-          noiseSuppression: true,
+          noiseSuppression: false,
           autoGainControl: true,
         },
       });
@@ -337,7 +380,6 @@ export function useVoiceInput(onLive: (text: string, final: boolean) => void) {
       );
       return;
     }
-    store(USED_KEY, '1');
     getWorker();
     const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
     const source = ctx.createMediaStreamSource(stream);
@@ -359,48 +401,51 @@ export function useVoiceInput(onLive: (text: string, final: boolean) => void) {
       lastVoice: 0,
       segHasSpeech: false,
       lastLiveAt: 0,
-      noise: 0.004,
-      committed: '',
+      noise: 0.002,
+      segments: [],
       interim: '',
       interimTo: 0,
-      busy: false,
-      nextId: 1,
-      pending: new Map(),
-      stopping: false,
-      finalSent: false,
-      timer: setInterval(() => tick(s), 80),
+      liveBusy: false,
+      openJobs: 0,
+      stopped: false,
+      shownAtStop: null,
+      timer: setInterval(() => tick(s), 60),
       startedAt: Date.now(),
     };
     proc.onaudioprocess = (ev) => {
-      if (s.stopping) return;
+      if (s.stopped) return;
       const copy = new Float32Array(ev.inputBuffer.getChannelData(0));
       s.chunks.push(copy);
       s.total += copy.length;
       let sum = 0;
       for (let i = 0; i < copy.length; i++) sum += copy[i] * copy[i];
       const rms = Math.sqrt(sum / copy.length);
-      // पृष्ठभूमि आवाज आफैं सिक्ने, त्यसभन्दा धेरै माथिको मात्र बोली मान्ने — learn the noise floor; speech must clearly exceed it.
-      if (rms < s.noise * 2.5) s.noise = s.noise * 0.9 + rms * 0.1;
-      if (rms > Math.max(0.015, s.noise * 3.5)) {
+      const threshold = Math.max(MIN_SPEECH_RMS, s.noise * 2.2);
+      if (rms > threshold) {
         s.lastVoice = s.total;
         s.segHasSpeech = true;
+      } else {
+        // चुप्पीको बेला मात्र पृष्ठभूमि आवाज सिक्ने — learn the background level only from quiet frames.
+        s.noise = s.noise * 0.95 + rms * 0.05;
       }
     };
     session.current = s;
     setAnalyser(an);
     setState({ stage: 'recording', seconds: 0 });
-    onLiveRef.current('', false);
+    cbRef.current.onLive('');
   }, [getWorker]);
 
   const toggle = useCallback(() => {
     if (session.current) stop();
-    else if (state.stage === 'idle') void start();
-  }, [start, state.stage, stop]);
+    else void start();
+  }, [start, stop]);
 
   return {
     state,
     analyser,
     device,
+    modelProgress,
+    refining,
     language,
     setLanguage: (l: VoiceLanguage) => {
       setLanguageState(l);
@@ -410,6 +455,11 @@ export function useVoiceInput(onLive: (text: string, final: boolean) => void) {
     setQuality: (q: VoiceQuality) => {
       setQualityState(q);
       store(QUALITY_KEY, q);
+      if (!readyModels.current.has(q))
+        getWorker().postMessage({
+          type: 'warmup',
+          quality: q,
+        } satisfies VoiceRequest);
     },
     error,
     clearError: () => setError(''),

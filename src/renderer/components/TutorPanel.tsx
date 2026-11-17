@@ -59,16 +59,24 @@ export function TutorPanel({
   // Capture the box's text once, when dictation starts, without relying on a deferred state updater.
   const inputRef = useRef(input);
   inputRef.current = input;
-  const voiceBase = useRef<string | null>(null);
-  const voice = useVoiceInput((text, final) => {
-    if (voiceBase.current === null)
-      voiceBase.current = inputRef.current.trimEnd();
+  const voiceBase = useRef('');
+  const joinBase = (text: string) => {
     const base = voiceBase.current;
-    setInput(base && text ? `${base} ${text}` : base || text);
-    if (final) voiceBase.current = null;
-  });
-  const listening =
-    voice.state.stage === 'recording' || voice.state.stage === 'finishing';
+    return base && text ? `${base} ${text}` : base || text;
+  };
+  const voice = useVoiceInput(
+    (text) => {
+      // नयाँ रेकर्डिङ सुरु हुँदा (text खाली) box को पाठ समात्ने — capture the box text when a recording starts.
+      if (!text && voice.state.stage === 'idle')
+        voiceBase.current = inputRef.current.trimEnd();
+      setInput(joinBase(text));
+    },
+    (shown, better) => {
+      // तपाईंले पाठ नछोएको भए मात्र सुधारिएको पाठ राख्ने — replace only if you have not edited or sent it.
+      setInput((prev) => (prev === joinBase(shown) ? joinBase(better) : prev));
+    },
+  );
+  const listening = voice.state.stage === 'recording';
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
@@ -328,11 +336,15 @@ export function TutorPanel({
             <VoiceWave analyser={voice.analyser} height={38} />
             <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-300">
               <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-rose-500" />
-              {voice.state.stage === 'recording'
+              {voice.modelProgress !== null
                 ? tr(
-                    `सुन्दैछु… ${voice.state.seconds}s — रोक्न फेरि 🎤 थिच्नुहोस् · Listening… press 🎤 to stop`,
+                    `सुन्दैछु… model तयार हुँदैछ ${voice.modelProgress}%, शब्द केही बेरमा आउँछन् · Listening… model loading, words will follow`,
                   )
-                : tr('अन्तिम शब्दहरू मिलाउँदै… · Finishing the last words…')}
+                : voice.state.stage === 'recording'
+                  ? tr(
+                      `सुन्दैछु… ${voice.state.seconds}s — रोक्न फेरि 🎤 थिच्नुहोस् · Listening… press 🎤 to stop`,
+                    )
+                  : ''}
               <span className="ml-auto rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">
                 {voice.device === 'webgpu'
                   ? '⚡ GPU'
@@ -343,10 +355,10 @@ export function TutorPanel({
             </div>
           </div>
         )}
-        {voice.state.stage === 'loading' && (
-          <p className="mb-1.5 text-xs text-sky-300">
+        {voice.refining && !listening && (
+          <p className="mb-1.5 text-[11px] text-slate-400">
             {tr(
-              `⬇️ आवाज बुझ्ने model तयार गर्दै (पहिलोपटक मात्र, ${voice.quality === 'fast' ? '~160MB' : '~390MB'}) ${voice.state.progress}% · Preparing the speech model (first time only)`,
+              '✨ पाठ अझै सफा गर्दै (पठाउन पर्खनु पर्दैन) · Polishing the text (no need to wait)',
             )}
           </p>
         )}
@@ -367,13 +379,22 @@ export function TutorPanel({
                   : 'border border-slate-600 text-slate-200 hover:bg-slate-700'
               } disabled:opacity-40`}
               title={tr('बोलेर लेख्नुहोस् (Voice) · Speak instead of typing')}
-              disabled={
-                voice.state.stage === 'loading' ||
-                voice.state.stage === 'finishing'
-              }
               onClick={voice.toggle}
             >
-              🎤
+              <span className="relative">
+                🎤
+                {/* हरियो = model तयार, पहेँलो = लोड हुँदै — green = model ready, amber = loading */}
+                <span
+                  className={`absolute -top-1 -right-2 h-2 w-2 rounded-full ${voice.modelProgress === null ? 'bg-emerald-400' : 'animate-pulse bg-amber-400'}`}
+                  title={
+                    voice.modelProgress === null
+                      ? tr('आवाज model तयार · Speech model ready')
+                      : tr(
+                          `आवाज model तयार हुँदैछ ${voice.modelProgress}% · Speech model loading`,
+                        )
+                  }
+                />
+              </span>
             </button>
             <button
               className="rounded border border-slate-600 px-1 text-[10px] text-slate-300 hover:bg-slate-700"
