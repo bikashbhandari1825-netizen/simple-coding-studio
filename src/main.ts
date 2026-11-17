@@ -6,9 +6,9 @@ import { registerFileSystemHandlers } from './main-process/fileSystem';
 import { registerRunnerHandlers, stopCurrentRun } from './main-process/runner';
 import { registerSettingsHandlers } from './main-process/settings';
 import {
-  registerClaudeLoginHandlers,
-  stopClaudeLogin,
-} from './main-process/claudeLogin';
+  registerClaudeCodeHandlers,
+  stopGuruChildren,
+} from './main-process/claudeCode';
 
 // Windows installer ले shortcut बनाउँदा/हटाउँदा एप तुरुन्तै बन्द गर्ने।
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -106,7 +106,7 @@ app.whenReady().then(() => {
   registerRunnerHandlers();
   registerSettingsHandlers();
   registerAiHandlers();
-  registerClaudeLoginHandlers();
+  registerClaudeCodeHandlers();
   createWindow();
 
   app.on('activate', () => {
@@ -120,7 +120,7 @@ app.whenReady().then(() => {
 // Stop any running flutter/npm process when the app quits.
 app.on('before-quit', () => {
   stopCurrentRun();
-  stopClaudeLogin();
+  stopGuruChildren();
 });
 
 app.on('window-all-closed', () => {

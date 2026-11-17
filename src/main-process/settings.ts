@@ -1,15 +1,15 @@
-import { app, ipcMain, safeStorage } from 'electron';
+import { app, ipcMain } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
-import { isClaudeConnected } from './claudeLogin';
 import { AI_MODELS, type AiModelId, type SettingsInfo } from '../shared/types';
 
-// API key Windows को आफ्नै encryption (DPAPI) ले बन्द गरेर राखिन्छ, plain text मा होइन।
-// The API key is encrypted with the OS keystore (DPAPI on Windows), never stored as plain text.
+// सेटिङ: Guru ले कुन Claude model प्रयोग गर्ने मात्र। API key चाहिँदैन (Claude Code subscription प्रयोग हुन्छ)।
+// Settings hold only the Guru model choice; no API key is needed because Claude Code uses the subscription.
 
 interface StoredSettings {
+  model?: string;
+  /** पुरानो संस्करणको key — a key saved by an older version; removed on load. */
   apiKeyEncrypted?: string;
-  model?: AiModelId;
 }
 
 const file = () => path.join(app.getPath('userData'), 'settings.json');
@@ -30,22 +30,8 @@ function save(settings: StoredSettings) {
 function info(s: StoredSettings = load()): SettingsInfo {
   const model = AI_MODELS.some((m) => m.id === s.model)
     ? (s.model as AiModelId)
-    : 'claude-opus-5-5';
-  return {
-    hasApiKey: Boolean(s.apiKeyEncrypted),
-    claudeConnected: isClaudeConnected(),
-    model,
-  };
-}
-
-export function getApiKey(): string | null {
-  const s = load();
-  if (!s.apiKeyEncrypted || !safeStorage.isEncryptionAvailable()) return null;
-  try {
-    return safeStorage.decryptString(Buffer.from(s.apiKeyEncrypted, 'base64'));
-  } catch {
-    return null;
-  }
+    : 'default';
+  return { model };
 }
 
 export function getModel(): AiModelId {
@@ -53,39 +39,21 @@ export function getModel(): AiModelId {
 }
 
 export function registerSettingsHandlers(): void {
-  ipcMain.handle('settings:get', () => info());
-
-  ipcMain.handle('settings:saveKey', (_e, apiKey: unknown) => {
-    const key = typeof apiKey === 'string' ? apiKey.trim() : '';
-    if (!key.startsWith('sk-ant-')) {
-      throw new Error(
-        'यो Claude API key जस्तो देखिएन (sk-ant- बाट सुरु हुनुपर्छ) — This does not look like a Claude API key.',
-      );
-    }
-    if (!safeStorage.isEncryptionAvailable()) {
-      throw new Error(
-        'यो computer मा सुरक्षित भण्डारण उपलब्ध छैन — Secure storage is not available on this computer.',
-      );
-    }
-    const s = load();
-    s.apiKeyEncrypted = safeStorage.encryptString(key).toString('base64');
-    save(s);
-    return info(s);
-  });
-
-  ipcMain.handle('settings:clearKey', () => {
-    const s = load();
+  // पुरानो संस्करणले राखेको API key अब चाहिँदैन, हटाउने — drop any API key an older version saved.
+  const s = load();
+  if (s.apiKeyEncrypted) {
     delete s.apiKeyEncrypted;
     save(s);
-    return info(s);
-  });
+  }
+
+  ipcMain.handle('settings:get', () => info());
 
   ipcMain.handle('settings:setModel', (_e, model: unknown) => {
     if (!AI_MODELS.some((m) => m.id === model))
       throw new Error('Unknown model');
-    const s = load();
-    s.model = model as AiModelId;
-    save(s);
-    return info(s);
+    const next = load();
+    next.model = model as AiModelId;
+    save(next);
+    return info(next);
   });
 }

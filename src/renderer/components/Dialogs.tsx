@@ -5,7 +5,7 @@ import {
   type SettingsInfo,
 } from '../../shared/types';
 import { errorText } from '../lib/helpers';
-import { ConnectClaude } from './ConnectClaude';
+import { LoginCard, type ClaudeAccount } from './ClaudeAccount';
 
 export function Modal({
   title,
@@ -106,24 +106,24 @@ export function PromptDialog({
 }
 
 export function SettingsDialog({
+  account,
   settings,
   onChange,
   onClose,
 }: {
+  account: ClaudeAccount;
   settings: SettingsInfo;
   onChange: (s: SettingsInfo) => void;
   onClose: () => void;
 }) {
-  const [key, setKey] = useState('');
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
     null,
   );
 
-  const run = async (action: () => Promise<SettingsInfo>, okText: string) => {
+  const changeModel = async (model: AiModelId) => {
     try {
-      onChange(await action());
-      setMessage({ ok: true, text: okText });
-      setKey('');
+      onChange(await window.studio.setModel(model));
+      setMessage({ ok: true, text: 'Model बदलियो · Model changed' });
     } catch (err) {
       setMessage({ ok: false, text: errorText(err) });
     }
@@ -132,75 +132,22 @@ export function SettingsDialog({
   return (
     <Modal title="⚙️ सेटिङ · Settings" onClose={onClose}>
       <label className="mb-2 block text-sm font-medium text-slate-300">
-        Claude account
+        Claude account (Claude Code)
       </label>
-      <ConnectClaude settings={settings} onChange={onChange} />
+      <LoginCard account={account} />
+      <p className="mt-2 text-[11px] leading-4 text-slate-400">
+        Guru ले यो computer मा login भएको Claude Code प्रयोग गर्छ, त्यसैले तपाईंको
+        Claude subscription बाटै चल्छ। API key वा छुट्टै credit चाहिँदैन। — Guru uses
+        the Claude Code sign-in on this computer, so it runs on your Claude
+        subscription: no API key, no separate credits.
+      </p>
 
-      <details className="mt-5" open={settings.hasApiKey}>
-        <summary className="mb-1 cursor-pointer text-sm font-medium text-slate-400">
-          Advanced: API key (नचाहिने · not needed with Connect)
-        </summary>
-        <p className="mb-2 text-xs text-slate-400">
-          {settings.hasApiKey
-            ? '✅ Key सुरक्षित रूपमा राखिएको छ (Windows encryption) — A key is saved securely.'
-            : 'Key राखे यो browser login भन्दा पहिले प्रयोग हुन्छ — A saved key takes priority over the browser login.'}{' '}
-          <a
-            href="https://console.anthropic.com/settings/keys"
-            target="_blank"
-            rel="noreferrer"
-            className="text-sky-400 underline"
-          >
-            Key कहाँ पाउने? · Get a key
-          </a>
-        </p>
-        <div className="flex gap-2">
-          <input
-            type="password"
-            value={key}
-            placeholder="sk-ant-..."
-            autoComplete="off"
-            onChange={(e) => setKey(e.target.value)}
-            className="min-w-0 flex-1 rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-sky-500"
-          />
-          <button
-            className="btn-primary"
-            disabled={!key.trim()}
-            onClick={() =>
-              void run(
-                () => window.studio.saveApiKey(key),
-                'Key राखियो · Key saved',
-              )
-            }
-          >
-            राख · Save
-          </button>
-        </div>
-        {settings.hasApiKey && (
-          <button
-            className="mt-2 text-xs text-rose-400 hover:underline"
-            onClick={() =>
-              void run(
-                () => window.studio.clearApiKey(),
-                'Key हटाइयो · Key removed',
-              )
-            }
-          >
-            Key हटाऊ · Remove key
-          </button>
-        )}
-      </details>
-
-      <label className="mb-1 mt-5 block text-sm font-medium text-slate-300">
-        AI Model
+      <label className="mt-5 mb-1 block text-sm font-medium text-slate-300">
+        Guru model
       </label>
       <select
         value={settings.model}
-        onChange={(e) =>
-          void run(
-            () => window.studio.setModel(e.target.value as AiModelId),
-            'Model बदलियो · Model changed',
-          )
-        }
+        onChange={(e) => void changeModel(e.target.value as AiModelId)}
         className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-sky-500"
       >
         {AI_MODELS.map((m) => (

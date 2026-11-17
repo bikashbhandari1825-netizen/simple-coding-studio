@@ -6,12 +6,7 @@ import {
   webUtils,
   type IpcRendererEvent,
 } from 'electron';
-import type {
-  AiEvent,
-  RunEvent,
-  StudioApi,
-  ClaudeLoginProgress,
-} from './shared/types';
+import type { AiEvent, RunEvent, StudioApi } from './shared/types';
 
 function subscribe<T>(
   channel: string,
@@ -49,19 +44,15 @@ const api: StudioApi = {
   onRunEvent: (listener) => subscribe<RunEvent>('run:event', listener),
 
   getSettings: () => ipcRenderer.invoke('settings:get'),
-  saveApiKey: (apiKey) => ipcRenderer.invoke('settings:saveKey', apiKey),
-  clearApiKey: () => ipcRenderer.invoke('settings:clearKey'),
   setModel: (model) => ipcRenderer.invoke('settings:setModel', model),
   askAi: (request) => ipcRenderer.invoke('ai:ask', request),
   cancelAi: (requestId) => ipcRenderer.invoke('ai:cancel', requestId),
   onAiEvent: (listener) => subscribe<AiEvent>('ai:event', listener),
 
-  connectClaude: () => ipcRenderer.invoke('claude:login'),
-  cancelClaudeLogin: () => ipcRenderer.invoke('claude:cancelLogin'),
-  disconnectClaude: () => ipcRenderer.invoke('claude:logout'),
   getClaudeStatus: () => ipcRenderer.invoke('claude:status'),
-  onClaudeProgress: (listener) =>
-    subscribe<ClaudeLoginProgress>('claude:progress', listener),
+  claudeLogin: (switchAccount) =>
+    ipcRenderer.invoke('claude:login', switchAccount),
+  claudeLogout: () => ipcRenderer.invoke('claude:logout'),
 };
 
 contextBridge.exposeInMainWorld('studio', api);

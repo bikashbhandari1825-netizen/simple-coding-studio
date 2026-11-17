@@ -66,37 +66,35 @@ export interface AiRequest {
   context?: AiContext;
 }
 
+export type AiErrorKind = 'auth' | 'limit';
+
 export type AiEvent =
   | { requestId: string; type: 'text'; text: string }
   | { requestId: string; type: 'done' }
-  | {
-      requestId: string;
-      type: 'error';
-      message: string;
-      kind?: 'billing' | 'auth';
-    };
+  | { requestId: string; type: 'error'; message: string; kind?: AiErrorKind };
 
+/** Claude Code (`claude --model`) का model छनोट — Model choices passed to Claude Code. */
 export const AI_MODELS = [
-  { id: 'claude-opus-5-5', label: 'Claude Opus 5.5 (सबैभन्दा राम्रो · best)' },
-  {
-    id: 'claude-sonnet-5-5',
-    label: 'Claude Sonnet 5.5 (छिटो, सस्तो · faster, cheaper)',
-  },
-  { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 (धेरै सस्तो · cheapest)' },
+  { id: 'default', label: 'Claude Code को आफ्नै छनोट · Claude Code default' },
+  { id: 'opus', label: 'Opus (सबैभन्दा राम्रो · best, uses more of your plan)' },
+  { id: 'sonnet', label: 'Sonnet (छिटो र सन्तुलित · fast, balanced)' },
+  { id: 'haiku', label: 'Haiku (सबैभन्दा छिटो · fastest)' },
 ] as const;
 
 export type AiModelId = (typeof AI_MODELS)[number]['id'];
 
-export interface ClaudeLoginProgress {
-  stage: 'idle' | 'installing' | 'waiting' | 'done';
-  message: string;
+export interface SettingsInfo {
+  model: AiModelId;
 }
 
-export interface SettingsInfo {
-  hasApiKey: boolean;
-  /** Browser बाट Claude account जोडिएको छ — Connected through the browser login. */
-  claudeConnected: boolean;
-  model: AiModelId;
+/** यो computer को Claude Code login अवस्था — Claude Code sign-in state on this computer. */
+export interface ClaudeStatus {
+  installed: boolean;
+  loggedIn: boolean;
+  email?: string;
+  /** pro, max, … */
+  plan?: string;
+  authMethod?: string;
 }
 
 /** UI ले प्रयोग गर्न पाउने सुरक्षित API — The safe API the UI can call (window.studio). */
@@ -129,23 +127,18 @@ export interface StudioApi {
   createFlutterProject(name: string): Promise<ProjectInfo | null>;
   onRunEvent(listener: (event: RunEvent) => void): () => void;
 
-  // AI tutor
+  // AI tutor (Claude Code)
   getSettings(): Promise<SettingsInfo>;
-  saveApiKey(apiKey: string): Promise<SettingsInfo>;
-  clearApiKey(): Promise<SettingsInfo>;
   setModel(model: AiModelId): Promise<SettingsInfo>;
   askAi(request: AiRequest): Promise<void>;
   cancelAi(requestId: string): Promise<void>;
   onAiEvent(listener: (event: AiEvent) => void): () => void;
 
-  // Connect with Claude (browser login)
-  connectClaude(): Promise<boolean>;
-  cancelClaudeLogin(): Promise<void>;
-  disconnectClaude(): Promise<boolean>;
-  getClaudeStatus(): Promise<string>;
-  onClaudeProgress(
-    listener: (progress: ClaudeLoginProgress) => void,
-  ): () => void;
+  // Claude account (claude auth)
+  getClaudeStatus(): Promise<ClaudeStatus>;
+  /** Terminal window खोलेर login (switchAccount: पहिले logout) — Opens a terminal window to log in (logs out first when switching). */
+  claudeLogin(switchAccount: boolean): Promise<void>;
+  claudeLogout(): Promise<ClaudeStatus>;
 }
 
 declare global {

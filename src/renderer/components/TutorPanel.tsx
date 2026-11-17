@@ -3,10 +3,15 @@ import type {
   AiChatMessage,
   AiContext,
   AiMode,
-  SettingsInfo,
+  AiErrorKind,
 } from '../../shared/types';
 import { errorText, newId } from '../lib/helpers';
-import { AccountFixActions, AccountMenu, ConnectClaude } from './ConnectClaude';
+import {
+  AccountFixActions,
+  AccountMenu,
+  LoginCard,
+  type ClaudeAccount,
+} from './ClaudeAccount';
 import { useVoiceInput } from '../voice/useVoiceInput';
 import { Markdown } from './Markdown';
 
@@ -18,7 +23,7 @@ interface ChatItem {
   /** Chat मा देखाइने छोटो label — Short label shown in the chat (user turns). */
   label?: string;
   error?: string;
-  errorKind?: 'billing' | 'auth';
+  errorKind?: AiErrorKind;
   streaming?: boolean;
 }
 
@@ -30,22 +35,18 @@ export interface TutorRequest {
 }
 
 interface Props {
-  settings: SettingsInfo;
-  onSettingsChange: (s: SettingsInfo) => void;
+  account: ClaudeAccount;
   getContext: () => AiContext;
   /** बाहिरबाट पठाइएको प्रश्न (जस्तै console को "Guru लाई सोध") — A request pushed from outside. */
   pending: TutorRequest | null;
   onPendingHandled: () => void;
-  onOpenSettings: () => void;
 }
 
 export function TutorPanel({
-  settings,
-  onSettingsChange,
+  account,
   getContext,
   pending,
   onPendingHandled,
-  onOpenSettings,
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState('');
@@ -215,26 +216,16 @@ export function TutorPanel({
             ✨ नयाँ · New
           </button>
         )}
-        <AccountMenu settings={settings} onChange={onSettingsChange} />
+        <AccountMenu account={account} />
       </div>
 
-      {!settings.hasApiKey && !settings.claudeConnected && (
-        <div className="m-3 rounded-lg border border-amber-700 bg-amber-950/50 p-3 text-sm text-amber-200">
+      {(account.waiting || (account.status && !account.status.loggedIn)) && (
+        <div className="m-3 rounded-lg border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200">
           <p className="mb-2">
-            Guru चलाउन आफ्नो Claude account जोड्नुहोस्। — Connect your Claude
-            account to use Guru.
+            Guru चलाउन Claude Code मा login गर्नुहोस्। — Sign in to Claude Code to
+            use Guru.
           </p>
-          <ConnectClaude
-            settings={settings}
-            onChange={onSettingsChange}
-            compact
-          />
-          <button
-            className="mt-2 text-xs text-slate-400 underline hover:text-slate-200"
-            onClick={onOpenSettings}
-          >
-            वा API key राख्नुहोस् · or use an API key
-          </button>
+          <LoginCard account={account} compact />
         </div>
       )}
 
@@ -287,11 +278,7 @@ export function TutorPanel({
                 <p className="mt-1 text-rose-400">⚠️ {item.error}</p>
               )}
               {item.error && item.errorKind && (
-                <AccountFixActions
-                  kind={item.errorKind}
-                  settings={settings}
-                  onChange={onSettingsChange}
-                />
+                <AccountFixActions kind={item.errorKind} account={account} />
               )}
             </div>
           ),

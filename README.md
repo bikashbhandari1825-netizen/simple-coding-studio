@@ -44,10 +44,10 @@ npm.cmd run make
 
 ## पहिलोपटक प्रयोग गर्दा (First use)
 
-1. Guru panel वा ⚙️ Settings मा **🔗 Connect with Claude (Browser Login)** थिच्नुहोस्। Browser खुल्छ, आफ्नो Anthropic Console account छानेर Allow थिच्नुहोस्। Key copy गर्नु पर्दैन।
-   - पहिलोपटक app ले Anthropic को आधिकारिक `ant` CLI (GitHub, ~14 MB) ल्याउँछ, SHA-256 checksum जाँच्छ, र त्यसैले login गराउँछ। Login `%APPDATA%Anthropic` मा `simple-coding-studio` profile मा बस्छ।
-   - खर्च Anthropic Console को API credit बाट कटिन्छ (Claude.ai Pro/Max subscription बाट होइन)।
-   - वैकल्पिक: Settings मा API key पनि राख्न सकिन्छ। Key राखिएको भए त्यसलाई पहिलो प्राथमिकता दिइन्छ।
+1. **Claude Code** यो computer मा install र login भएको हुनुपर्छ। Guru ले `claude -p` चलाएर जवाफ ल्याउँछ, त्यसैले **तपाईंको Claude subscription (Pro/Max) बाटै चल्छ**। API key वा छुट्टै credit चाहिँदैन।
+   - Login नभए माथि दायाँ **🔗 Login with Claude** थिच्नुहोस्। Terminal window र browser खुल्छ, आफ्नो email छानेर Authorize थिच्नुहोस्।
+   - अर्को email: **👤 email ▾ → 🔄 Switch Account** (यसले `claude auth logout` र `claude auth login` चलाउँछ)। ध्यान दिनुहोस्: यसले यो computer को सबै Claude Code बाट account फेर्छ।
+   - Guru को जवाफ तपाईंको plan को usage limit भित्र गनिन्छ। Limit पुगे Guru ले भन्छ।
 2. **✨ नयाँ एप** थिचेर नयाँ Flutter project बनाउनुहोस्, वा **📁 खोल** / Drag & Drop ले पुरानो project खोल्नुहोस्।
 3. माथि दायाँ कमाण्ड छानेर **▶ चलाऊ · Run** थिच्नुहोस् (जस्तै "Chrome मा चलाऊ")।
 4. कोड नबुझे **🧑‍🏫 Guru** मा 📖 बुझाऊ, 🩺 गल्ती खोज, वा 🗺️ एप योजना थिच्नुहोस्।
@@ -75,13 +75,13 @@ src/
 ├─ main-process/
 │  ├─ fileSystem.ts        फाइल पढ्ने/लेख्ने (खोलिएको project भित्र मात्र)
 │  ├─ runner.ts            ▶ Run presets (flutter, dart, npm, python)
-│  ├─ ai.ts                Guru — Claude API (streaming)
-│  ├─ claudeLogin.ts       Connect with Claude — ant CLI browser login
-│  └─ settings.ts          API key (encrypted) र model
+│  ├─ ai.ts                Guru — `claude -p` (Claude Code, streaming)
+│  ├─ claudeCode.ts        Claude Code खोज्ने, login/switch/logout
+│  └─ settings.ts          Guru model
 └─ renderer/
    ├─ App.tsx              मुख्य layout
    ├─ components/          FileTree, EditorArea, ConsolePanel, TutorPanel, Dialogs, Welcome
    └─ lib/helpers.ts       साना सहयोगी functions
 ```
 
-**Tech:** Electron Forge + Vite, React 19, TypeScript, Tailwind CSS 4, Monaco Editor, `@anthropic-ai/sdk`.
+**Tech:** Electron Forge + Vite, React 19, TypeScript, Tailwind CSS 4, Monaco Editor, Claude Code CLI, Whisper (transformers.js) voice.

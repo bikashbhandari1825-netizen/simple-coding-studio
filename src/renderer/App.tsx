@@ -8,7 +8,7 @@ import type {
   SettingsInfo,
 } from '../shared/types';
 import { ConsolePanel, type ConsoleLine } from './components/ConsolePanel';
-import { AccountMenu } from './components/ConnectClaude';
+import { AccountMenu, useClaudeAccount } from './components/ClaudeAccount';
 import { PromptDialog, SettingsDialog } from './components/Dialogs';
 import { EditorArea, type OpenTab } from './components/EditorArea';
 import { FileTree } from './components/FileTree';
@@ -58,10 +58,9 @@ export default function App() {
       return 400;
     }
   });
+  const account = useClaudeAccount();
   const [settings, setSettings] = useState<SettingsInfo>({
-    hasApiKey: false,
-    claudeConnected: false,
-    model: 'claude-opus-5-5',
+    model: 'default',
   });
   const [dialog, setDialog] = useState<DialogKind>(null);
   const [toast, setToast] = useState<{ text: string; error: boolean } | null>(
@@ -492,7 +491,7 @@ export default function App() {
             💾 सेभ · Save
           </button>
         )}
-        <AccountMenu settings={settings} onChange={setSettings} />
+        <AccountMenu account={account} />
         <button
           className="btn-ghost"
           title="Settings"
@@ -599,12 +598,10 @@ export default function App() {
             onPointerDown={startGuruResize}
           />
           <TutorPanel
-            settings={settings}
-            onSettingsChange={setSettings}
+            account={account}
             getContext={getContext}
             pending={pendingTutor}
             onPendingHandled={handlePendingHandled}
-            onOpenSettings={() => setDialog('settings')}
           />
         </aside>
       </div>
@@ -622,9 +619,9 @@ export default function App() {
         )}
         {activeTab && <span>{activeTab.language}</span>}
         <span>
-          {settings.hasApiKey || settings.claudeConnected
-            ? '🧑‍🏫 Guru तयार · ready'
-            : '🧑‍🏫 Guru: Claude जोड्नुहोस् · connect Claude'}
+          {account.status?.loggedIn
+            ? `🧑‍🏫 Guru तयार · ready (${account.status.email ?? 'Claude Code'})`
+            : '🧑‍🏫 Guru: Claude Code मा login गर्नुहोस् · sign in to Claude Code'}
         </span>
       </footer>
 
@@ -688,6 +685,7 @@ export default function App() {
       )}
       {dialog === 'settings' && (
         <SettingsDialog
+          account={account}
           settings={settings}
           onChange={setSettings}
           onClose={() => setDialog(null)}
