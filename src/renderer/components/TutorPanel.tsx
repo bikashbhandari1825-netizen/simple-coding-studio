@@ -333,7 +333,7 @@ For each error: say which line, explain in simple words why it happened (what th
             {tr('✨ नयाँ · New')}
           </button>
         )}
-        <AccountMenu account={account} />
+        <AccountMenu account={account} compact />
       </div>
 
       {(account.waiting || (account.status && !account.status.loggedIn)) && (
@@ -387,40 +387,6 @@ For each error: say which line, explain in simple words why it happened (what th
               key={item.id}
               className="rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-2 text-sm text-slate-100"
             >
-              {item.content && !item.streaming && (
-                <div className="-mt-0.5 mb-1 flex items-center justify-end gap-2">
-                  {speaker.speakingId === item.id && (
-                    <SpeakWave pulse={speaker.pulse} />
-                  )}
-                  <button
-                    className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors ${
-                      speaker.speakingId === item.id ||
-                      speaker.loadingId === item.id
-                        ? 'border-violet-400 bg-violet-600/30 text-white'
-                        : 'border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white'
-                    }`}
-                    title={
-                      speaker.speakingId === item.id
-                        ? tr('रोक्न थिच्नुहोस् · Press to stop')
-                        : tr(
-                            'ठूलो स्वरमा सुन्नुहोस् (नेपाली + English) · Listen (Nepali + English)',
-                          )
-                    }
-                    aria-label={
-                      speaker.speakingId === item.id
-                        ? 'Stop reading'
-                        : 'Read aloud'
-                    }
-                    onClick={() => void speaker.toggle(item.id, item.content)}
-                  >
-                    {speaker.loadingId === item.id
-                      ? tr('⏳ तयार हुँदै · Starting')
-                      : speaker.speakingId === item.id
-                        ? tr('⏹ रोक · Stop')
-                        : tr('🔊 सुन · Listen')}
-                  </button>
-                </div>
-              )}
               {item.content ? (
                 <Markdown
                   text={item.content}
@@ -437,6 +403,17 @@ For each error: say which line, explain in simple words why it happened (what th
               )}
               {item.error && item.errorKind && (
                 <AccountFixActions kind={item.errorKind} account={account} />
+              )}
+              {item.content && !item.streaming && (
+                <SpeakerBar
+                  id={item.id}
+                  content={item.content}
+                  speaker={speaker}
+                  hasNepali={/[ऀ-ॿ]{2}/.test(item.content)}
+                  hasEnglish={/[A-Za-z]{3}/.test(
+                    item.content.replace(/```[\s\S]*?```/g, ''),
+                  )}
+                />
               )}
             </div>
           ),
@@ -651,6 +628,84 @@ For each error: say which line, explain in simple words why it happened (what th
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 🔊 हरेक जवाफको तल: सबै / नेपाली मात्र / English मात्र सुन्ने; उही बटन फेरि थिच्दा रोकिन्छ।
+ * Under every answer: listen to all, Nepali only, or English only; pressing the same button again stops it.
+ */
+function SpeakerBar({
+  id,
+  content,
+  speaker,
+  hasNepali,
+  hasEnglish,
+}: {
+  id: string;
+  content: string;
+  speaker: ReturnType<typeof useSpeaker>;
+  hasNepali: boolean;
+  hasEnglish: boolean;
+}) {
+  const options: {
+    key: string;
+    label: string;
+    only?: 'ne-NP' | 'en-US';
+    show: boolean;
+  }[] = [
+    { key: 'all', label: tr('🔊 सबै सुन · Listen'), show: true },
+    {
+      key: 'ne',
+      label: '🔊 नेपाली',
+      only: 'ne-NP',
+      show: hasNepali && hasEnglish,
+    },
+    {
+      key: 'en',
+      label: '🔊 English',
+      only: 'en-US',
+      show: hasNepali && hasEnglish,
+    },
+  ];
+  return (
+    <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-700/70 pt-2">
+      {options
+        .filter((o) => o.show)
+        .map((o) => {
+          const bid = `${id}:${o.key}`;
+          const playing = speaker.speakingId === bid;
+          const loading = speaker.loadingId === bid;
+          return (
+            <span key={o.key} className="flex items-center gap-1.5">
+              {playing && (
+                <SpeakWave pulse={speaker.pulse} width={56} height={20} />
+              )}
+              <button
+                className={`rounded-full border px-3 py-1 text-[12px] font-medium transition-colors ${
+                  playing || loading
+                    ? 'border-violet-400 bg-gradient-to-r from-sky-600/40 via-violet-600/40 to-pink-600/40 text-white shadow-[0_0_10px_rgba(167,139,250,0.5)]'
+                    : 'border-slate-500 text-slate-200 hover:border-violet-400 hover:bg-slate-700 hover:text-white'
+                }`}
+                aria-label={playing ? 'Stop reading' : `Read aloud ${o.key}`}
+                aria-pressed={playing}
+                title={
+                  playing
+                    ? tr('रोक्न फेरि थिच्नुहोस् · Press again to stop')
+                    : tr('ठूलो स्वरमा सुन्नुहोस् · Listen')
+                }
+                onClick={() => void speaker.toggle(bid, content, o.only)}
+              >
+                {loading
+                  ? tr('⏳ तयार हुँदै · Starting')
+                  : playing
+                    ? tr('⏹ रोक · Stop')
+                    : o.label}
+              </button>
+            </span>
+          );
+        })}
     </div>
   );
 }

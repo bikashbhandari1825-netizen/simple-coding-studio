@@ -66,7 +66,7 @@ export function useSpeaker() {
   }, []);
 
   const toggle = useCallback(
-    async (id: string, markdown: string) => {
+    async (id: string, markdown: string, only?: 'ne-NP' | 'en-US') => {
       setError('');
       if (currentId.current === id) {
         stop();
@@ -78,8 +78,20 @@ export function useSpeaker() {
         );
         return;
       }
-      const chunks = markdownToSpeech(markdown);
-      if (!chunks.length) return;
+      // "नेपाली मात्र" वा "English मात्र" — optionally keep just one language.
+      const chunks = markdownToSpeech(markdown).filter(
+        (c) => !only || c.lang === only,
+      );
+      if (!chunks.length) {
+        setError(
+          only === 'en-US'
+            ? 'यो जवाफमा English भाग छैन। — This answer has no English part.'
+            : only === 'ne-NP'
+              ? 'यो जवाफमा नेपाली भाग छैन। — This answer has no Nepali part.'
+              : '',
+        );
+        return;
+      }
       currentId.current = id;
       setLoadingId(id);
       setSpeakingId(null);

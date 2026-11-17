@@ -211,7 +211,14 @@ export function LoginCard({
 }
 
 /** माथिको toolbar र Guru मा सधैं देखिने account बटन — The always-visible account button. */
-export function AccountMenu({ account }: { account: ClaudeAccount }) {
+/** compact: Guru panel भित्र सानो रूप (email नदेखाउने) — compact: small version inside the Guru panel. */
+export function AccountMenu({
+  account,
+  compact = false,
+}: {
+  account: ClaudeAccount;
+  compact?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const s = account.status;
@@ -246,11 +253,11 @@ export function AccountMenu({ account }: { account: ClaudeAccount }) {
   return (
     <div ref={ref} className="relative">
       <button
-        className={`chip ${account.waiting ? 'animate-pulse' : ''}`}
-        title="Switch Account / Logout"
+        className={`chip max-w-[220px] truncate ${account.waiting ? 'animate-pulse' : ''}`}
+        title={`Switch Account / Logout${s.email ? ` — ${s.email}` : ''}`}
         onClick={() => setOpen((o) => !o)}
       >
-        👤 {s.email ?? 'Account'} ▾
+        {compact ? '👤 ▾' : `👤 ${s.email ?? 'Account'} ▾`}
       </button>
       {open && (
         <div className="absolute right-0 z-30 mt-1 w-72 rounded-lg border border-slate-600 bg-slate-800 p-2 shadow-xl">
