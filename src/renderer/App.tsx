@@ -15,6 +15,7 @@ import { EditorArea, type OpenTab } from './components/EditorArea';
 import { FileTree } from './components/FileTree';
 import { TutorPanel, type TutorRequest } from './components/TutorPanel';
 import { Welcome } from './components/Welcome';
+import { QuickOpen } from './components/QuickOpen';
 import {
   baseName,
   errorText,
@@ -28,7 +29,13 @@ import { LangSwitch } from './components/LangSwitch';
 import { analyzeOutput, type FixTip } from './lib/errorAnalyzer';
 import type { EditorDiagnostic } from '../shared/types';
 
-type DialogKind = 'newFile' | 'newFolder' | 'newFlutter' | 'settings' | null;
+type DialogKind =
+  | 'newFile'
+  | 'newFolder'
+  | 'newFlutter'
+  | 'settings'
+  | 'quickOpen'
+  | null;
 
 const KIND_LABEL: Record<ProjectInfo['kind'], string> = {
   flutter: '💙 Flutter',
@@ -141,6 +148,9 @@ export default function App() {
         pushLine(event.stream, stripAnsi(event.data));
       } else {
         setRunning((r) => (r?.runId === event.runId ? null : r));
+        // Run गल्तीसहित बन्द भयो: Guru लाई आफैं बुझाउन भन्ने (Auto खुला भए) — a failed run: let Guru explain it (if Auto is on).
+        if (event.code !== 0 && !event.stoppedByUser)
+          setRunFailedAt(Date.now());
         pushLine(
           event.code === 0 || event.stoppedByUser ? 'info' : 'error',
           event.stoppedByUser
@@ -357,10 +367,15 @@ export default function App() {
         e.preventDefault();
         void saveActive();
       }
+      // Ctrl+P = फाइल खोज (VS Code जस्तै) — Ctrl+P = Quick Open, like VS Code.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p' && project) {
+        e.preventDefault();
+        setDialog('quickOpen');
+      }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [saveActive]);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [saveActive, project]);
 
   // ---------- Run ----------
   const runSelected = async () => {
@@ -421,6 +436,33 @@ export default function App() {
   };
 
   const handlePendingHandled = useCallback(() => setPendingTutor(null), []);
+
+  // Run असफल भएपछि output र गल्तीहरू सहित Guru आफैं बोलाउने — after a failed run, Guru explains it by itself.
+  const [runFailedAt, setRunFailedAt] = useState(0);
+  useEffect(() => {
+    if (!runFailedAt || !account.status?.loggedIn) return;
+    let auto = true;
+    try {
+      auto = localStorage.getItem('studio.guruAutoExplain') !== 'off';
+    } catch {
+      // ignore
+    }
+    if (!auto) return;
+    // Fix Tip हरू तयार हुन एकछिन पर्खने — give the Fix Tips a moment to be computed.
+    const t = setTimeout(() => {
+      setPendingTutor({
+        mode: 'fix',
+        label: tr(
+          '🤖 🩺 Run असफल भयो — Guru ले कारण र उपाय बताउँछ · The run failed — Guru explains why and how to fix it',
+        ),
+        prompt:
+          'I pressed Run and my program failed. Read the output below. Explain each real error (dependency, syntax or type error) in simple words, say which file and line it is in, and show the exact fix (corrected code or the command/button to use).',
+        context: getContext(),
+      });
+    }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per failure
+  }, [runFailedAt]);
 
   // ---------- Smart Error Analyzer ----------
   // अन्तिम run को output मात्र पढ्ने — analyse only the latest run's output.
@@ -717,6 +759,15 @@ export default function App() {
             {KIND_LABEL[project.kind]} · {project.name}
           </span>
         )}
+        {project && (
+          <button
+            className="btn-ghost"
+            title="Ctrl+P"
+            onClick={() => setDialog('quickOpen')}
+          >
+            {tr('🔍 फाइल खोज · Find file')}
+          </button>
+        )}
         <div className="flex-1" />
         {project && presets.length > 0 && (
           <div className="flex items-center gap-1">
@@ -981,6 +1032,21 @@ export default function App() {
           confirmLabel={tr('बनाऊ · Create')}
           onClose={() => setDialog(null)}
           onSubmit={createFlutter}
+        />
+      )}
+      {dialog === 'quickOpen' && project && (
+        <QuickOpen
+          rootPath={project.rootPath}
+          onClose={() => setDialog(null)}
+          onOpen={(rel) => {
+            setDialog(null);
+            const full = `${project.rootPath}\\${rel}`;
+            void openFile({
+              name: baseName(full),
+              path: full,
+              isDirectory: false,
+            });
+          }}
         />
       )}
       {dialog === 'settings' && (

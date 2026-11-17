@@ -5,6 +5,8 @@ export interface FileEntry {
   name: string;
   path: string;
   isDirectory: boolean;
+  /** Symlink/junction (जस्तै Flutter को .plugin_symlinks) — a symlink or junction */
+  isSymlink?: boolean;
 }
 
 export type ProjectKind =
@@ -150,6 +152,10 @@ export interface StudioApi {
   openRecentFolder(folderPath: string): Promise<ProjectInfo | null>;
   readDir(dirPath: string): Promise<FileEntry[]>;
   readFile(filePath: string): Promise<string>;
+  /** Ctrl+P "फाइल खोज" का लागि project का सबै फाइल — every file in the project, for Quick Open. */
+  listAllFiles(
+    rootPath: string,
+  ): Promise<{ files: string[]; truncated: boolean }>;
   writeFile(filePath: string, content: string): Promise<void>;
   createFile(dirPath: string, name: string): Promise<string>;
   createFolder(dirPath: string, name: string): Promise<string>;

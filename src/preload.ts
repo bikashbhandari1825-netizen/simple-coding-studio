@@ -32,6 +32,7 @@ const api: StudioApi = {
     ipcRenderer.invoke('fs:openDroppedPath', folderPath),
   readDir: (dirPath) => ipcRenderer.invoke('fs:readDir', dirPath),
   readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
+  listAllFiles: (rootPath) => ipcRenderer.invoke('fs:listAll', rootPath),
   writeFile: (filePath, content) =>
     ipcRenderer.invoke('fs:writeFile', filePath, content),
   createFile: (dirPath, name) =>

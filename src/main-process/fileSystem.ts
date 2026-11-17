@@ -1,4 +1,5 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import type { Dirent } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { FileEntry, ProjectInfo, ProjectKind } from '../shared/types';
@@ -20,7 +21,119 @@ const HIDDEN = new Set([
   '.gradle',
 ]);
 
-const MAX_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_FILE_BYTES = 8 * 1024 * 1024;
+/** Ctrl+P सूचीमा बढीमा यति फाइल — the most files listed for Quick Open. */
+const MAX_LIST_FILES = 25_000;
+/** फाइल खोजमा नपस्ने भारी फोल्डर — heavy folders skipped by Quick Open. */
+const LIST_SKIP = new Set([
+  'venv',
+  '.venv',
+  '__pycache__',
+  'Intermediate',
+  'Binaries',
+  'Saved',
+  'DerivedDataCache',
+]);
+
+/** खोलिएको फाइल कुन encoding मा थियो (save गर्दा उही राख्न) — each file's encoding, kept when saving. */
+type Encoding = 'utf8' | 'utf8-bom' | 'utf16le' | 'utf16be';
+const encodings = new Map<string, Encoding>();
+
+/** Node का error हरूलाई बुझिने नेपाली/English सन्देश — friendly bilingual messages for file-system errors. */
+export function friendlyFsError(err: unknown, what: string): Error {
+  const code = (err as NodeJS.ErrnoException)?.code;
+  const name = path.basename(what);
+  switch (code) {
+    case 'ENOENT':
+      return new Error(
+        `"${name}" भेटिएन (सारिएको वा मेटिएको हुनसक्छ) — "${name}" was not found (it may have been moved or deleted).`,
+      );
+    case 'EISDIR':
+      return new Error(
+        `"${name}" फोल्डर हो, फाइल होइन — "${name}" is a folder, not a file.`,
+      );
+    case 'EACCES':
+    case 'EPERM':
+      return new Error(
+        `"${name}" खोल्ने अनुमति छैन — No permission to open "${name}".`,
+      );
+    case 'EBUSY':
+      return new Error(
+        `"${name}" अर्को program ले प्रयोग गरिरहेको छ — "${name}" is in use by another program.`,
+      );
+    case 'UNKNOWN':
+    case 'ETIMEDOUT':
+      return new Error(
+        `"${name}" OneDrive बाट download हुन सकेन; internet जाँच्नुहोस् — "${name}" could not be downloaded from OneDrive; check your internet.`,
+      );
+    default:
+      return err instanceof Error ? err : new Error(String(err));
+  }
+}
+
+/** Bytes बाट पाठ (UTF-8, BOM, UTF-16), binary भए अस्वीकार — decode bytes as text; refuse binary files. */
+function decodeText(buf: Buffer, file: string): string {
+  if (
+    buf.length >= 3 &&
+    buf[0] === 0xef &&
+    buf[1] === 0xbb &&
+    buf[2] === 0xbf
+  ) {
+    encodings.set(file, 'utf8-bom');
+    return buf.subarray(3).toString('utf8');
+  }
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
+    encodings.set(file, 'utf16le');
+    return buf.subarray(2).toString('utf16le');
+  }
+  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
+    encodings.set(file, 'utf16be');
+    const swapped = Buffer.from(buf.subarray(2));
+    swapped.swap16();
+    return swapped.toString('utf16le');
+  }
+  // सुरुका ८KB मा NUL byte भए binary (image, .uasset…) — NUL bytes in the first 8 KB mean a binary file.
+  if (buf.subarray(0, 8192).includes(0)) {
+    throw new Error(
+      `"${path.basename(file)}" code/पाठ फाइल होइन (binary), editor मा खोल्न मिल्दैन — "${path.basename(file)}" is a binary file, not text.`,
+    );
+  }
+  encodings.set(file, 'utf8');
+  return buf.toString('utf8');
+}
+
+function encodeText(text: string, file: string): Buffer {
+  switch (encodings.get(file)) {
+    case 'utf8-bom':
+      return Buffer.concat([
+        Buffer.from([0xef, 0xbb, 0xbf]),
+        Buffer.from(text, 'utf8'),
+      ]);
+    case 'utf16le':
+      return Buffer.concat([
+        Buffer.from([0xff, 0xfe]),
+        Buffer.from(text, 'utf16le'),
+      ]);
+    case 'utf16be': {
+      const le = Buffer.from(text, 'utf16le');
+      le.swap16();
+      return Buffer.concat([Buffer.from([0xfe, 0xff]), le]);
+    }
+    default:
+      return Buffer.from(text, 'utf8');
+  }
+}
+
+/** Symlink/junction ले देखाउने ठाउँ फोल्डर हो कि — follow symlinks/junctions to see whether they point to a folder. */
+async function entryKind(
+  dir: string,
+  e: Dirent,
+): Promise<{ isDirectory: boolean; isSymlink: boolean }> {
+  if (!e.isSymbolicLink())
+    return { isDirectory: e.isDirectory(), isSymlink: false };
+  const st = await fs.stat(path.join(dir, e.name)).catch(() => null);
+  return { isDirectory: Boolean(st?.isDirectory()), isSymlink: true };
+}
 
 // Windows मा फाइल नाममा नमिल्ने अक्षरहरू — Characters Windows forbids in names.
 // oxlint-disable-next-line no-control-regex -- control characters are exactly what we reject
@@ -117,21 +230,31 @@ export function registerFileSystemHandlers(): void {
     'fs:readDir',
     async (_event, dirPath: string): Promise<FileEntry[]> => {
       const dir = assertInsideProject(dirPath);
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-      return entries
-        .filter((e) => !HIDDEN.has(e.name))
-        .map((e) => ({
-          name: e.name,
-          path: path.join(dir, e.name),
-          isDirectory: e.isDirectory(),
-        }))
-        .sort((a, b) =>
-          a.isDirectory === b.isDirectory
-            ? a.name.localeCompare(b.name)
-            : a.isDirectory
-              ? -1
-              : 1,
-        );
+      let entries: Dirent[];
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch (err) {
+        throw friendlyFsError(err, dir);
+      }
+      const list = await Promise.all(
+        entries
+          .filter((e) => !HIDDEN.has(e.name))
+          .map(async (e) => ({
+            name: e.name,
+            path: path.join(dir, e.name),
+            ...(await entryKind(dir, e)),
+          })),
+      );
+      return list.sort((x, y) =>
+        x.isDirectory === y.isDirectory
+          ? x.name.localeCompare(y.name, undefined, {
+              numeric: true,
+              sensitivity: 'base',
+            })
+          : x.isDirectory
+            ? -1
+            : 1,
+      );
     },
   );
 
@@ -139,13 +262,56 @@ export function registerFileSystemHandlers(): void {
     'fs:readFile',
     async (_event, filePath: string): Promise<string> => {
       const file = assertInsideProject(filePath);
-      const stat = await fs.stat(file);
-      if (stat.size > MAX_FILE_BYTES) {
-        throw new Error(
-          'फाइल धेरै ठूलो छ (2MB भन्दा बढी) — File is too large (over 2 MB).',
-        );
+      try {
+        const stat = await fs.stat(file);
+        if (stat.isDirectory())
+          throw Object.assign(new Error('EISDIR'), { code: 'EISDIR' });
+        if (stat.size > MAX_FILE_BYTES) {
+          const mb = (stat.size / 1048576).toFixed(1);
+          throw new Error(
+            `फाइल धेरै ठूलो छ (${mb}MB, सीमा 8MB) — File is too large (${mb} MB; limit 8 MB).`,
+          );
+        }
+        return decodeText(await fs.readFile(file), file);
+      } catch (err) {
+        throw (err as NodeJS.ErrnoException).code
+          ? friendlyFsError(err, file)
+          : err;
       }
-      return fs.readFile(file, 'utf8');
+    },
+  );
+
+  // Ctrl+P "फाइल खोज" का लागि project का सबै फाइल (generated फोल्डर बाहेक) — every file, for Quick Open.
+  ipcMain.handle(
+    'fs:listAll',
+    async (
+      _event,
+      rootPath: string,
+    ): Promise<{ files: string[]; truncated: boolean }> => {
+      const root = assertInsideProject(rootPath);
+      const files: string[] = [];
+      const queue = [root];
+      while (queue.length && files.length < MAX_LIST_FILES) {
+        const dir = queue.shift() as string;
+        let entries: Dirent[];
+        try {
+          entries = await fs.readdir(dir, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const e of entries) {
+          if (HIDDEN.has(e.name)) continue;
+          const p = path.join(dir, e.name);
+          // Symlink फोल्डरभित्र नपस्ने (pub cache जस्ता ठूला ठाउँ) — never descend into symlinked folders.
+          if (e.isDirectory()) {
+            if (!LIST_SKIP.has(e.name)) queue.push(p);
+          } else if (e.isFile()) {
+            files.push(path.relative(root, p));
+            if (files.length >= MAX_LIST_FILES) break;
+          }
+        }
+      }
+      return { files, truncated: files.length >= MAX_LIST_FILES };
     },
   );
 
@@ -154,7 +320,12 @@ export function registerFileSystemHandlers(): void {
     async (_event, filePath: string, content: string): Promise<void> => {
       const file = assertInsideProject(filePath);
       if (typeof content !== 'string') throw new Error('Invalid content');
-      await fs.writeFile(file, content, 'utf8');
+      // खोल्दाकै encoding मा save — save in the same encoding the file was opened with.
+      try {
+        await fs.writeFile(file, encodeText(content, file));
+      } catch (err) {
+        throw friendlyFsError(err, file);
+      }
     },
   );
 

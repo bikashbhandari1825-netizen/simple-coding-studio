@@ -138,6 +138,14 @@ function TreeRow(props: Props & { entry: FileEntry; depth: number }) {
         </span>
         <span>{fileIcon(entry.name, entry.isDirectory, open)}</span>
         <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+        {entry.isSymlink && (
+          <span
+            className="text-[10px] text-slate-500"
+            title={tr('Symlink (अर्को ठाउँको फोल्डर/फाइल जोडिएको) · Symlink')}
+          >
+            🔗
+          </span>
+        )}
         <button
           className="hidden text-xs text-slate-500 group-hover:block hover:text-rose-400"
           title={tr('Recycle Bin मा पठाऊ · Move to Recycle Bin')}
