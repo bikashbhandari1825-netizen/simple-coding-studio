@@ -1,9 +1,12 @@
 import DOMPurify from 'dompurify';
 import { marked } from 'marked';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { tr } from '../i18n';
 
 // AI को Markdown जवाफलाई सुरक्षित HTML मा बदल्ने (DOMPurify ले खतरनाक code हटाउँछ)।
-// Render the AI's Markdown answer as safe HTML (DOMPurify strips anything dangerous).
+// हरेक code block मा "📋 Copy" र "🔍 बुझाऊ" बटन थपिन्छ।
+// Render the AI's Markdown answer as safe HTML (DOMPurify strips anything dangerous),
+// and add "Copy" and "Explain" buttons to every code block.
 
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.tagName === 'A') {
@@ -12,7 +15,20 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 });
 
-export function Markdown({ text }: { text: string }) {
+export function Markdown({
+  text,
+  onExplainCode,
+  showCodeTools = true,
+}: {
+  text: string;
+  /** Code block को "🔍 बुझाऊ" थिच्दा — called when "Explain" is pressed on a code block. */
+  onExplainCode?: (code: string, language: string) => void;
+  showCodeTools?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const explainRef = useRef(onExplainCode);
+  explainRef.current = onExplainCode;
+
   const html = useMemo(
     () =>
       DOMPurify.sanitize(
@@ -20,5 +36,44 @@ export function Markdown({ text }: { text: string }) {
       ),
     [text],
   );
-  return <div className="md-body" dangerouslySetInnerHTML={{ __html: html }} />;
+
+  useEffect(() => {
+    const root = ref.current;
+    if (!root || !showCodeTools) return;
+    for (const pre of root.querySelectorAll('pre')) {
+      if (pre.querySelector('.code-tools')) continue;
+      const codeEl = pre.querySelector('code');
+      const code = codeEl?.textContent ?? pre.textContent ?? '';
+      if (code.trim().split('\n').length < 2 && code.length < 40) continue; // धेरै सानो code मा बटन नचाहिने — skip tiny snippets
+      const language = codeEl?.className.match(/language-([\w-]+)/)?.[1] ?? '';
+      const bar = document.createElement('div');
+      bar.className = 'code-tools';
+      const mk = (label: string, onClick: (b: HTMLButtonElement) => void) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        b.addEventListener('click', () => onClick(b));
+        bar.appendChild(b);
+      };
+      mk(tr('📋 Copy गर · Copy'), (b) => {
+        void navigator.clipboard.writeText(code).then(() => {
+          b.textContent = tr('✓ Copy भयो · Copied');
+          setTimeout(() => (b.textContent = tr('📋 Copy गर · Copy')), 1500);
+        });
+      });
+      if (explainRef.current)
+        mk(tr('🔍 लाइन-लाइन बुझाऊ · Explain line by line'), () =>
+          explainRef.current?.(code, language),
+        );
+      pre.prepend(bar);
+    }
+  }, [html, showCodeTools]);
+
+  return (
+    <div
+      ref={ref}
+      className="md-body"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }

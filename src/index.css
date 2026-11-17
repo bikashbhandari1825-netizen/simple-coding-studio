@@ -113,3 +113,27 @@ body {
   padding-left: 0.7em;
   color: #cbd5e1;
 }
+
+/* Guru को code block मा Copy / बुझाऊ बटन — Copy / Explain buttons on Guru's code blocks */
+.md-body pre {
+  position: relative;
+}
+.md-body .code-tools {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin: -0.2em 0 0.4em;
+}
+.md-body .code-tools button {
+  font-family: 'Segoe UI', 'Nirmala UI', sans-serif;
+  font-size: 11px;
+  color: #cbd5e1;
+  border: 1px solid #475569;
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: #0f172a;
+}
+.md-body .code-tools button:hover {
+  background: #1e293b;
+  color: #fff;
+}

@@ -89,6 +89,41 @@ export interface SettingsInfo {
   model: AiModelId;
 }
 
+/** Editor मा देखाइने एउटा गल्ती/चेतावनी — one error or warning shown in the editor. */
+export interface EditorDiagnostic {
+  line: number;
+  column: number;
+  endLine: number;
+  endColumn: number;
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  code?: string;
+}
+
+export interface DiagEvent {
+  file: string;
+  /** 'dart' | 'python' */
+  source: string;
+  diagnostics: EditorDiagnostic[];
+}
+
+/** 🔊 बोलिने एउटा वाक्य — one sentence to speak. */
+export interface SpeakChunk {
+  text: string;
+  lang: 'ne-NP' | 'en-US';
+}
+
+/** 🔊 Speaker बाट आउने घटना — events from the speaker (Edge speechSynthesis). */
+export interface SpeakerEvent {
+  type: 'ready' | 'start' | 'chunk' | 'word' | 'end' | 'error';
+  id?: string;
+  index?: number;
+  charIndex?: number;
+  voice?: string;
+  stopped?: boolean;
+  error?: string;
+}
+
 /** ☁️ Cloud dictation बाट आउने घटना — events from cloud dictation (Chrome/Edge speech service). */
 export interface DictationEvent {
   type: 'ready' | 'start' | 'interim' | 'final' | 'end' | 'error';
@@ -151,6 +186,26 @@ export interface StudioApi {
 
   /** Windows को Sound सेटिङ खोल्ने (mic volume) — Open Windows Sound settings (microphone volume). */
   openSoundSettings(): Promise<void>;
+
+  // Live editor errors (Dart analysis server, Python syntax)
+  diagUpdate(
+    filePath: string,
+    text: string,
+    kind: 'open' | 'change' | 'close',
+  ): Promise<void>;
+  onDiagEvent(listener: (event: DiagEvent) => void): () => void;
+
+  // 🔊 Speaker (Edge natural voices)
+  speakerAvailable(): Promise<boolean>;
+  speakerPrepare(): Promise<void>;
+  speak(
+    id: string,
+    chunks: SpeakChunk[],
+    rate: number,
+    gender: 'female' | 'male',
+  ): Promise<void>;
+  stopSpeaking(): Promise<void>;
+  onSpeakerEvent(listener: (event: SpeakerEvent) => void): () => void;
 
   // ☁️ Cloud dictation (Chrome/Edge)
   dictationAvailable(): Promise<boolean>;

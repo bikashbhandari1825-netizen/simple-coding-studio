@@ -13,6 +13,11 @@ import {
   registerCloudDictationHandlers,
   stopCloudDictation,
 } from './main-process/cloudDictation';
+import {
+  registerDiagnosticsHandlers,
+  stopDiagnostics,
+} from './main-process/diagnostics';
+import { registerSpeakerHandlers, stopSpeaker } from './main-process/speaker';
 
 // Windows installer ले shortcut बनाउँदा/हटाउँदा एप तुरुन्तै बन्द गर्ने।
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -118,6 +123,8 @@ app.whenReady().then(() => {
   registerAiHandlers();
   registerClaudeCodeHandlers();
   registerCloudDictationHandlers();
+  registerDiagnosticsHandlers();
+  registerSpeakerHandlers();
   createWindow();
 
   app.on('activate', () => {
@@ -133,6 +140,8 @@ app.on('before-quit', () => {
   stopCurrentRun();
   stopGuruChildren();
   stopCloudDictation();
+  stopDiagnostics();
+  stopSpeaker();
 });
 
 app.on('window-all-closed', () => {

@@ -26,6 +26,7 @@ import {
 import { getUiLang, setUiLang, tr, type UiLang } from './i18n';
 import { LangSwitch } from './components/LangSwitch';
 import { analyzeOutput, type FixTip } from './lib/errorAnalyzer';
+import type { EditorDiagnostic } from '../shared/types';
 
 type DialogKind = 'newFile' | 'newFolder' | 'newFlutter' | 'settings' | null;
 
@@ -265,6 +266,10 @@ export default function App() {
           },
         ]);
         setActivePath(entry.path);
+        if (/\.(dart|py)$/i.test(entry.name))
+          void window.studio
+            .diagUpdate(entry.path, content, 'open')
+            .catch(() => undefined);
       } catch (err) {
         showError(errorText(err));
       }
@@ -311,6 +316,8 @@ export default function App() {
     ) {
       return;
     }
+    if (/\.dart$/i.test(path))
+      void window.studio.diagUpdate(path, '', 'close').catch(() => undefined);
     const idx = tabs.findIndex((t) => t.path === path);
     const next = tabs.filter((t) => t.path !== path);
     setTabs(next);
@@ -495,6 +502,125 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [reveal, activePath]);
 
+  // ---------- Live editor errors (Dart analysis server, Python, TS/JS) ----------
+  // टाइप गर्दै गर्दा गल्ती जाँच — check for mistakes while typing (Dart/Python go to the main process).
+  const diagTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const scheduleDiagnostics = (path: string, content: string) => {
+    if (!/\.(dart|py)$/i.test(path)) return; // TS/JS/JSON/CSS/HTML: Monaco ले आफैं जाँच्छ — Monaco checks these itself
+    clearTimeout(diagTimers.current.get(path));
+    diagTimers.current.set(
+      path,
+      setTimeout(
+        () =>
+          void window.studio
+            .diagUpdate(path, content, 'change')
+            .catch(() => undefined),
+        350,
+      ),
+    );
+  };
+  const [diagnostics, setDiagnostics] = useState<
+    Record<string, Record<string, EditorDiagnostic[]>>
+  >({});
+  const diagKey = (p: string) => p.replace(/\//g, '\\').toLowerCase();
+  useEffect(() => {
+    const off = window.studio.onDiagEvent((ev) =>
+      setDiagnostics((prev) => ({
+        ...prev,
+        [diagKey(ev.file)]: {
+          ...prev[diagKey(ev.file)],
+          [ev.source]: ev.diagnostics,
+        },
+      })),
+    );
+    return () => off();
+  }, []);
+  // Dart/Python का गल्तीलाई सबै खुला फाइलको editor मा रातो रेखा बनाउने — show them as squiggles in every open file.
+  useEffect(() => {
+    const severity = {
+      error: monaco.MarkerSeverity.Error,
+      warning: monaco.MarkerSeverity.Warning,
+      info: monaco.MarkerSeverity.Info,
+    };
+    for (const tab of tabs) {
+      const model = monaco.editor.getModel(monaco.Uri.parse(tab.path));
+      if (!model) continue;
+      const bySource = diagnostics[diagKey(tab.path)] ?? {};
+      for (const [source, list] of Object.entries(bySource)) {
+        monaco.editor.setModelMarkers(
+          model,
+          `studio-${source}`,
+          list.map((d) => ({
+            severity: severity[d.severity],
+            message: d.code ? `${d.message} (${d.code})` : d.message,
+            startLineNumber: d.line,
+            startColumn: d.column,
+            endLineNumber: d.endLine,
+            endColumn: Math.max(d.endColumn, d.column + 1),
+            source: source === 'dart' ? 'Dart' : 'Python',
+          })),
+        );
+      }
+    }
+  }, [diagnostics, tabs, activePath]);
+
+  // खुला फाइलका सबै गल्ती (Monaco, Dart, Python, run) — every error in the open file, for Guru and the status bar.
+  // खुला फाइल र त्यसका गल्ती सँगै राख्ने, ताकि Guru ले कहिल्यै अर्को फाइलको गल्ती नबुझाओस्।
+  // Keep the errors together with the file they belong to, so Guru never explains another file's errors.
+  const [activeErrors, setActiveErrors] = useState<{
+    path: string | null;
+    list: { line: number; column: number; message: string; source: string }[];
+  }>({ path: null, list: [] });
+  useEffect(() => {
+    const read = () => {
+      const model = editorRef.current?.getModel();
+      // Editor ले अझै अर्को फाइल देखाउँदैछ भने पर्खने — the editor may still be showing the previous file.
+      if (
+        !model ||
+        !activePath ||
+        model.uri.toString() !== monaco.Uri.parse(activePath).toString()
+      ) {
+        setActiveErrors((prev) =>
+          prev.path === null && prev.list.length === 0
+            ? prev
+            : { path: null, list: [] },
+        );
+        return;
+      }
+      const seen = new Set<string>();
+      const list = monaco.editor
+        .getModelMarkers({ resource: model.uri })
+        .filter((m) => m.severity === monaco.MarkerSeverity.Error)
+        .sort((a, b) => a.startLineNumber - b.startLineNumber)
+        .map((m) => ({
+          line: m.startLineNumber,
+          column: m.startColumn,
+          message: m.message,
+          source: m.source ?? m.owner,
+        }))
+        // एउटै गल्ती दुई जाँचबाट आए एकपटक मात्र — the same error from two checkers is shown once.
+        .filter((e) => {
+          const key = `${e.line}|${e.message.replace(/^w+Error: /, '')}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      setActiveErrors((prev) =>
+        prev.path === activePath &&
+        JSON.stringify(prev.list) === JSON.stringify(list)
+          ? prev
+          : { path: activePath, list },
+      );
+    };
+    read();
+    const again = setTimeout(read, 120); // model बदलिएपछि फेरि — read again once the editor has switched models
+    const sub = monaco.editor.onDidChangeMarkers(read);
+    return () => {
+      clearTimeout(again);
+      sub.dispose();
+    };
+  }, [activePath, tabs.length]);
+
   // Editor मा error भएको लाइनमा रातो रेखा — red squiggles on the error lines in the editor.
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -664,13 +790,14 @@ export default function App() {
                   activePath={activePath}
                   onSelect={setActivePath}
                   onClose={closeTab}
-                  onChange={(path, content) =>
+                  onChange={(path, content) => {
                     setTabs((prev) =>
                       prev.map((t) =>
                         t.path === path ? { ...t, content } : t,
                       ),
-                    )
-                  }
+                    );
+                    scheduleDiagnostics(path, content);
+                  }}
                   onSave={() => void saveActive()}
                   onEditorReady={(editor) => (editorRef.current = editor)}
                 />
@@ -743,6 +870,21 @@ export default function App() {
             getContext={getContext}
             pending={pendingTutor}
             onPendingHandled={handlePendingHandled}
+            editorErrors={
+              activeErrors.path === activePath ? activeErrors.list : []
+            }
+            activeFile={
+              activeTab && activeErrors.path === activeTab.path
+                ? baseName(activeTab.path)
+                : null
+            }
+            onJumpTo={(line, column) => {
+              const editor = editorRef.current;
+              if (!editor) return;
+              editor.revealLineInCenter(line);
+              editor.setPosition({ lineNumber: line, column });
+              editor.focus();
+            }}
           />
         </aside>
       </div>
@@ -760,6 +902,15 @@ export default function App() {
             {tr(`● ${dirtyCount} सेभ बाँकी · unsaved`)}
           </span>
         )}
+        {activeTab &&
+          activeErrors.path === activeTab.path &&
+          activeErrors.list.length > 0 && (
+            <span className="text-rose-400">
+              {tr(
+                `⛔ ${activeErrors.list.length} गल्ती · ${activeErrors.list.length} error(s)`,
+              )}
+            </span>
+          )}
         {activeTab && <span>{activeTab.language}</span>}
         <span>
           {account.status?.loggedIn

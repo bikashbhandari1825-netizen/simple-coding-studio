@@ -67,6 +67,10 @@ npm.cmd run make
 
 - **ने / EN / ने+EN:** माथि दायाँको बटनले पूरै app को भाषा तुरुन्तै बदल्छ। Guru को जवाफ पनि त्यही भाषामा आउँछ।
 - **🎤 Voice typing:** Web Speech API (`ne-NP` नेपाली / `en-US` English)। Electron भित्र यो API चल्दैन, त्यसैले app ले Chrome (नभए Edge) को एउटा लुकेको सानो window चलाउँछ; बोल्दै गर्दा नै शब्दहरू box मा आउँछन्। आवाज Google/Microsoft को speech service मा जान्छ र internet चाहिन्छ। App ले mic बाट waveform का लागि स्तर मात्र पढ्छ, रेकर्ड गर्दैन।
+- **⛔ Live editor errors:** टाइप गर्दै गर्दा गल्ती रातो रेखाले देखिन्छ: Dart/Flutter (Flutter सँगै आउने Dart analysis server), Python (syntax), JavaScript/TypeScript/JSON/CSS/HTML (Monaco)। Status bar मा गल्तीको संख्या देखिन्छ।
+- **🩺 Guru को आफैं गल्ती बुझाउने सुविधा:** Guru panel मा खुला फाइलका गल्तीको सूची (थिच्दा त्यो लाइनमा पुगिन्छ) र "🤖 आफैं · Auto" — टाइप गर्न रोकेको ३.५ सेकेन्डपछि Guru आफैं किन र कसरी सच्याउने बुझाउँछ (बढीमा २० सेकेन्डमा एकपटक)।
+- **🔍 Code breakdown:** Guru ले दिने हरेक code मुनि "कोडको व्याख्या" तालिका; code block मा "📋 Copy" र "🔍 लाइन-लाइन बुझाऊ" बटन।
+- **🔊 Speaker:** Guru को हरेक जवाफमा "🔊 सुन" बटन। Microsoft Edge का प्राकृतिक आवाज — नेपाली **हेमकला** (ne-NP), English **Ava** — हरेक वाक्यको भाषा आफैं छुट्याएर पढ्छ; बोल्दा waveform, फेरि थिच्दा रोकिन्छ। Edge र internet चाहिन्छ।
 - **Guru को Fix Tip:** Run गर्दा Python / Dart / Flutter / Node error आएमा output मुनि तुरुन्तै कुन फाइलको कुन लाइनमा के गडबड भयो र कसरी सच्याउने देखिन्छ। "फाइल खोल" थिच्दा ठ्याक्कै त्यो लाइनमा पुगिन्छ र editor मा रातो रेखा देखिन्छ।
 
 ---
@@ -84,6 +88,8 @@ src/
 │  ├─ ai.ts                Guru — `claude -p` (Claude Code, streaming)
 │  ├─ claudeCode.ts        Claude Code खोज्ने, login/switch/logout
 │  ├─ cloudDictation.ts    Chrome/Edge मा Web Speech API (लुकेको window + localhost bridge)
+│  ├─ speaker.ts           🔊 Edge को प्राकृतिक नेपाली/English आवाज (speechSynthesis)
+│  ├─ diagnostics.ts       Dart analysis server (LSP) र Python syntax जाँच
 │  └─ settings.ts          Guru model
 └─ renderer/
    ├─ App.tsx              मुख्य layout

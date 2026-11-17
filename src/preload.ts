@@ -8,8 +8,10 @@ import {
 } from 'electron';
 import type {
   AiEvent,
+  DiagEvent,
   DictationEvent,
   RunEvent,
+  SpeakerEvent,
   StudioApi,
 } from './shared/types';
 
@@ -59,6 +61,18 @@ const api: StudioApi = {
     ipcRenderer.invoke('claude:login', switchAccount),
   claudeLogout: () => ipcRenderer.invoke('claude:logout'),
   openSoundSettings: () => ipcRenderer.invoke('system:openSoundSettings'),
+
+  diagUpdate: (filePath, text, kind) =>
+    ipcRenderer.invoke('diag:update', filePath, text, kind),
+  onDiagEvent: (listener) => subscribe<DiagEvent>('diag:event', listener),
+
+  speakerAvailable: () => ipcRenderer.invoke('speaker:available'),
+  speakerPrepare: () => ipcRenderer.invoke('speaker:prepare'),
+  speak: (id, chunks, rate, gender) =>
+    ipcRenderer.invoke('speaker:speak', id, chunks, rate, gender),
+  stopSpeaking: () => ipcRenderer.invoke('speaker:stop'),
+  onSpeakerEvent: (listener) =>
+    subscribe<SpeakerEvent>('speaker:event', listener),
 
   dictationAvailable: () => ipcRenderer.invoke('dictation:available'),
   dictationPrepare: () => ipcRenderer.invoke('dictation:prepare'),

@@ -16,6 +16,8 @@ import { useVoiceInput } from '../voice/useVoiceInput';
 import { Markdown } from './Markdown';
 import { getUiLang, tr, tr2 } from '../i18n';
 import { VoiceWave } from '../voice/VoiceWave';
+import { SpeakWave } from '../voice/SpeakWave';
+import { useSpeaker } from '../voice/useSpeaker';
 
 interface ChatItem {
   id: string;
@@ -42,13 +44,33 @@ interface Props {
   /** बाहिरबाट पठाइएको प्रश्न (जस्तै console को "Guru लाई सोध") — A request pushed from outside. */
   pending: TutorRequest | null;
   onPendingHandled: () => void;
+  /** Editor मा अहिले देखिएका गल्तीहरू — errors currently shown in the editor */
+  editorErrors: EditorError[];
+  activeFile: string | null;
+  onJumpTo: (line: number, column: number) => void;
 }
+
+export interface EditorError {
+  line: number;
+  column: number;
+  message: string;
+  source: string;
+}
+
+const AUTO_KEY = 'studio.guruAutoExplain';
+/** टाइप गर्न रोकेपछि यति बेर पर्खेर मात्र Guru आफैं बोलाउने — wait this long after typing stops. */
+const AUTO_DELAY_MS = 3500;
+/** Guru आफैं बोलाउने बीचको न्यूनतम अन्तर (Claude को usage बचाउन) — minimum gap between automatic calls. */
+const AUTO_MIN_GAP_MS = 20_000;
 
 export function TutorPanel({
   account,
   getContext,
   pending,
   onPendingHandled,
+  editorErrors,
+  activeFile,
+  onJumpTo,
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState('');
@@ -77,6 +99,8 @@ export function TutorPanel({
     },
   );
   const listening = voice.state.stage === 'recording';
+  // 🔊 Guru को जवाफ पढ्ने — read Guru's answers aloud
+  const speaker = useSpeaker();
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
@@ -162,6 +186,77 @@ export function TutorPanel({
       void ask(pending);
     }
   }, [pending, busyId, ask, onPendingHandled]);
+
+  // ---------- Smart Guru Error Diagnostics ----------
+  const [autoExplain, setAutoExplain] = useState(() => {
+    try {
+      return localStorage.getItem(AUTO_KEY) !== 'off';
+    } catch {
+      return true;
+    }
+  });
+  const lastExplained = useRef('');
+  const lastAutoAt = useRef(0);
+  const errorSignature = activeFile
+    ? `${activeFile}|${editorErrors.map((e) => `${e.line}:${e.message}`).join('|')}`
+    : '';
+
+  const explainErrors = useCallback(
+    (auto: boolean) => {
+      if (!activeFile || editorErrors.length === 0) return;
+      lastExplained.current = errorSignature;
+      if (auto) lastAutoAt.current = Date.now();
+      const list = editorErrors
+        .slice(0, 8)
+        .map(
+          (e) =>
+            `- line ${e.line}, column ${e.column} (${e.source}): ${e.message}`,
+        )
+        .join('\n');
+      void ask({
+        mode: 'fix',
+        label: tr(
+          `${auto ? '🤖 ' : ''}🩺 ${activeFile} मा ${editorErrors.length} गल्ती — किन भयो र कसरी सच्याउने · ${editorErrors.length} error(s) in ${activeFile}: why and how to fix`,
+        ),
+        prompt: `My code editor shows these errors in ${activeFile}:
+${list}
+
+For each error: say which line, explain in simple words why it happened (what the rule is), then show the corrected line(s) of code. Finish with a short tip so I avoid this mistake next time.`,
+        context: { ...getContext(), runOutput: undefined },
+      });
+    },
+    [activeFile, editorErrors, errorSignature, ask, getContext],
+  );
+
+  // टाइप गर्न रोकेपछि नयाँ गल्ती रहिरहे Guru आफैं बुझाउँछ — after typing pauses, Guru explains new errors by itself.
+  useEffect(() => {
+    if (!autoExplain || !errorSignature || editorErrors.length === 0) return;
+    if (errorSignature === lastExplained.current || !account.status?.loggedIn)
+      return;
+    const t = setTimeout(() => {
+      if (busyId || Date.now() - lastAutoAt.current < AUTO_MIN_GAP_MS) return;
+      explainErrors(true);
+    }, AUTO_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [
+    autoExplain,
+    errorSignature,
+    editorErrors.length,
+    busyId,
+    account.status?.loggedIn,
+    explainErrors,
+  ]);
+
+  /** Guru को code block को "🔍 बुझाऊ" — explain a code block from Guru's answer. */
+  const explainCodeBlock = (code: string, language: string) => {
+    void ask({
+      mode: 'explain',
+      label: tr('🔍 यो code लाइन-लाइन बुझाऊ · Explain this code line by line'),
+      prompt:
+        'Explain this code from your answer, line by line, for a beginner.',
+      context: { selection: code, language: language || undefined },
+    });
+  };
 
   const sendTyped = () => {
     const text = input.trim();
@@ -292,8 +387,46 @@ export function TutorPanel({
               key={item.id}
               className="rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-2 text-sm text-slate-100"
             >
+              {item.content && !item.streaming && (
+                <div className="-mt-0.5 mb-1 flex items-center justify-end gap-2">
+                  {speaker.speakingId === item.id && (
+                    <SpeakWave pulse={speaker.pulse} />
+                  )}
+                  <button
+                    className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-colors ${
+                      speaker.speakingId === item.id ||
+                      speaker.loadingId === item.id
+                        ? 'border-violet-400 bg-violet-600/30 text-white'
+                        : 'border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white'
+                    }`}
+                    title={
+                      speaker.speakingId === item.id
+                        ? tr('रोक्न थिच्नुहोस् · Press to stop')
+                        : tr(
+                            'ठूलो स्वरमा सुन्नुहोस् (नेपाली + English) · Listen (Nepali + English)',
+                          )
+                    }
+                    aria-label={
+                      speaker.speakingId === item.id
+                        ? 'Stop reading'
+                        : 'Read aloud'
+                    }
+                    onClick={() => void speaker.toggle(item.id, item.content)}
+                  >
+                    {speaker.loadingId === item.id
+                      ? tr('⏳ तयार हुँदै · Starting')
+                      : speaker.speakingId === item.id
+                        ? tr('⏹ रोक · Stop')
+                        : tr('🔊 सुन · Listen')}
+                  </button>
+                </div>
+              )}
               {item.content ? (
-                <Markdown text={item.content} />
+                <Markdown
+                  text={item.content}
+                  showCodeTools={!item.streaming}
+                  onExplainCode={busyId ? undefined : explainCodeBlock}
+                />
               ) : item.streaming ? (
                 <span className="animate-pulse text-slate-400">
                   {tr('Guru सोच्दैछ… · thinking…')}
@@ -331,6 +464,66 @@ export function TutorPanel({
             {tr('🗺️ एप योजना · Plan app')}
           </button>
         </div>
+        {editorErrors.length > 0 && activeFile && (
+          <div
+            className="mb-2 rounded-lg border border-rose-700/70 bg-rose-950/40 p-2 text-[12px] text-rose-100"
+            role="status"
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">
+                {tr(
+                  `⛔ ${activeFile} मा ${editorErrors.length} गल्ती · ${editorErrors.length} error(s) in ${activeFile}`,
+                )}
+              </span>
+              <div className="flex-1" />
+              <label
+                className="flex cursor-pointer items-center gap-1 text-[11px] text-rose-200"
+                title={tr(
+                  'टाइप गर्न रोकेको ३.५ सेकेन्डपछि Guru आफैं बुझाउँछ (बढीमा २० सेकेन्डमा एकपटक) · Guru explains new errors by itself 3.5 s after you stop typing (at most once every 20 s)',
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={autoExplain}
+                  onChange={(e) => {
+                    setAutoExplain(e.target.checked);
+                    try {
+                      localStorage.setItem(
+                        AUTO_KEY,
+                        e.target.checked ? 'on' : 'off',
+                      );
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                />
+                {tr('🤖 आफैं · Auto')}
+              </label>
+            </div>
+            <ul className="mt-1 max-h-20 space-y-0.5 overflow-auto">
+              {editorErrors.slice(0, 5).map((e, i) => (
+                <li key={i}>
+                  <button
+                    className="w-full truncate text-left font-mono text-[11px] text-rose-200 hover:text-white hover:underline"
+                    title={e.message}
+                    onClick={() => onJumpTo(e.line, e.column)}
+                  >
+                    {tr(`लाइन ${e.line} · line ${e.line}`)}: {e.message}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              className="chip mt-1.5 border-rose-600 text-rose-100"
+              disabled={!!busyId}
+              onClick={() => explainErrors(false)}
+            >
+              {tr(
+                '🩺 Guru लाई किन र कसरी सच्याउने सोध · Ask Guru why and how to fix',
+              )}
+            </button>
+          </div>
+        )}
         {listening && (
           <div className="mb-2 rounded-xl border border-violet-500/40 bg-gradient-to-r from-sky-950/60 via-violet-950/60 to-pink-950/50 px-3 py-2">
             <VoiceWave analyser={voice.analyser} height={38} />
@@ -368,6 +561,14 @@ export function TutorPanel({
             {tr(
               '✨ पाठ अझै सफा गर्दै (पठाउन पर्खनु पर्दैन) · Polishing the text (no need to wait)',
             )}
+          </p>
+        )}
+        {speaker.error && (
+          <p
+            className="mb-1.5 text-xs text-rose-400"
+            onClick={speaker.clearError}
+          >
+            {tr(speaker.error)}
           </p>
         )}
         {voice.error && (
