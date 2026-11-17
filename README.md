@@ -24,16 +24,18 @@ PowerShell वा VS Code terminal मा यो project फोल्डरभ�
 
 ```powershell
 cd "C:\Users\bikas\OneDrive\Desktop\Mero vs code Nepali maa 1825\simple-coding-studio"
-npm start
+npm.cmd start
 ```
 
-- कोड बदलेर save गर्दा UI आफैं अपडेट हुन्छ। Main process (`src/main.ts`, `src/main-process/`) बदलेपछि terminal मा `rs` टाइप गरेर Enter थिच्नुहोस्।
-- DevTools पनि चाहियो भने: `$env:STUDIO_DEVTOOLS='1'; npm start`
+- **`npm` होइन `npm.cmd` किन?** यो computer को PowerShell ले `npm.ps1` script रोक्छ ("running scripts is disabled")। `npm.cmd` ले त्यो नियम नछोई काम गर्छ। — PowerShell blocks `npm.ps1` here; `npm.cmd` works without changing that security setting.
+- Terminal मा: `r` = app restart, `q` = बन्द (quit)।
+- कोड बदलेर save गर्दा UI आफैं अपडेट हुन्छ। Main process (`src/main.ts`, `src/main-process/`) बदलेपछि `r` थिच्नुहोस्।
+- DevTools पनि चाहियो भने: `$env:STUDIO_DEVTOOLS='1'; npm.cmd start`
 
 ## ४. नयाँ installer बनाउने (Build a new installer)
 
 ```powershell
-npm run make
+npm.cmd run make
 ```
 
 नतिजा — Output: `out\make\squirrel.windows\x64\SimpleCodingStudio-Setup.exe`
