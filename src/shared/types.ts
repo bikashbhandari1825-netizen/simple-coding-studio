@@ -141,6 +141,9 @@ export interface StudioApi {
   /** Terminal window खोलेर login (switchAccount: पहिले logout) — Opens a terminal window to log in (logs out first when switching). */
   claudeLogin(switchAccount: boolean): Promise<void>;
   claudeLogout(): Promise<ClaudeStatus>;
+
+  /** Windows को Sound सेटिङ खोल्ने (mic volume) — Open Windows Sound settings (microphone volume). */
+  openSoundSettings(): Promise<void>;
 }
 
 declare global {

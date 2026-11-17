@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { registerAiHandlers } from './main-process/ai';
@@ -86,6 +86,12 @@ const createWindow = () => {
 };
 
 app.whenReady().then(() => {
+  // Mic को volume मिलाउन Windows Sound सेटिङ खोल्ने (यही एउटा ठेगाना मात्र) — open Windows Sound settings; only this fixed URI.
+  ipcMain.handle('system:openSoundSettings', () =>
+    shell.openExternal(
+      process.platform === 'win32' ? 'ms-settings:sound' : 'about:blank',
+    ),
+  );
   // 🎤 Voice का लागि microphone (audio मात्र) अनुमति; camera र अरू सबै अस्वीकार।
   // Allow the microphone (audio only) for voice input; deny camera and everything else.
   session.defaultSession.setPermissionRequestHandler(

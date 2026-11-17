@@ -53,6 +53,7 @@ const api: StudioApi = {
   claudeLogin: (switchAccount) =>
     ipcRenderer.invoke('claude:login', switchAccount),
   claudeLogout: () => ipcRenderer.invoke('claude:logout'),
+  openSoundSettings: () => ipcRenderer.invoke('system:openSoundSettings'),
 };
 
 contextBridge.exposeInMainWorld('studio', api);

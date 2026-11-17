@@ -355,6 +355,22 @@ export function TutorPanel({
             </div>
           </div>
         )}
+        {listening && voice.quietMic && (
+          <div
+            className="mb-2 rounded-lg border border-amber-600 bg-amber-950/50 p-2 text-[12px] leading-5 text-amber-100"
+            role="alert"
+          >
+            {tr(
+              '🔈 Mic बाट आवाज धेरै सानो आइरहेको छ। Mic नजिक बोल्नुहोस्, वा Windows Sound सेटिङमा Input volume 80–100% गर्नुहोस्। — The microphone signal is very quiet. Speak closer, or raise the input volume to 80–100% in Windows Sound settings.',
+            )}
+            <button
+              className="chip mt-1.5 block"
+              onClick={() => void window.studio.openSoundSettings()}
+            >
+              {tr('⚙️ Sound सेटिङ खोल · Open Sound settings')}
+            </button>
+          </div>
+        )}
         {voice.refining && !listening && (
           <p className="mb-1.5 text-[11px] text-slate-400">
             {tr(

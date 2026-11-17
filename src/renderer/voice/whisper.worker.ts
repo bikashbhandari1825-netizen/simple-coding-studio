@@ -170,7 +170,10 @@ self.addEventListener('message', (event: MessageEvent<VoiceRequest>) => {
         task: 'transcribe',
         chunk_length_s: 30,
         stride_length_s: 5,
-      });
+        // हल्लाबाट "आप आप आप…" जस्तो अनन्त पाठ नबनोस् — stop endless repeated output on noise.
+        max_new_tokens: 120,
+        no_repeat_ngram_size: 4,
+      } as Parameters<AutomaticSpeechRecognitionPipeline>[1]);
       const text = (
         Array.isArray(output)
           ? output.map((o) => o.text).join(' ')

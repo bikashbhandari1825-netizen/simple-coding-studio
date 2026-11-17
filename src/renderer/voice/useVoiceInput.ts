@@ -22,8 +22,34 @@ const MAX_SEGMENT_S = 5;
 const LIVE_STEP_S = 0.35;
 /** बोली सुरु हुनुअघिको यति आवाज पनि राख्ने (पहिलो अक्षर नकाटियोस्) — keep this much audio before speech starts. */
 const PRE_ROLL_S = 0.5;
-/** बोली मान्ने न्यूनतम स्तर (laptop mic मा बिस्तारै बोल्दा पनि) — minimum level counted as speech, low enough for quiet voices. */
-const MIN_SPEECH_RMS = 0.0035;
+/** बोली मान्ने न्यूनतम स्तर — absolute minimum level counted as speech. */
+const MIN_SPEECH_RMS = 0.0015;
+/** पृष्ठभूमि हल्लाभन्दा यति गुणा माथि भए मात्र बोली — speech must be this many times louder than the noise floor. */
+const SPEECH_OVER_NOISE = 2.2;
+/** यो भन्दा कम चर्को बोली भए "mic को आवाज सानो" चेतावनी — warn about a quiet mic below this peak level. */
+const QUIET_MIC_RMS = 0.01;
+
+/**
+ * Whisper मा पठाउनुअघि सानो आवाजलाई ठूलो बनाउने (Claude/Google जस्तै) — boost quiet audio before Whisper.
+ */
+function normalize(audio: Float32Array): Float32Array {
+  let peak = 0;
+  for (let i = 0; i < audio.length; i++)
+    peak = Math.max(peak, Math.abs(audio[i]));
+  if (peak <= 0.0005 || peak >= 0.5) return audio;
+  const gain = Math.min(0.6 / peak, 30);
+  for (let i = 0; i < audio.length; i++) audio[i] *= gain;
+  return audio;
+}
+
+/** हल्लाबाट बनेको "आप आप आप…" जस्तो दोहोरिएको पाठ हटाउने — drop repeated nonsense produced from noise. */
+function cleanText(text: string): string {
+  const t = text.trim();
+  if (!t || HALLUCINATION.test(t)) return '';
+  const repeated = t.match(/(.{1,8}?)(?:\s*\1){4,}/u);
+  if (repeated && repeated[0].length > t.length * 0.4) return '';
+  return t;
+}
 
 const LANG_KEY = 'studio.voiceLanguage';
 const QUALITY_KEY = 'studio.voiceQuality';
@@ -71,6 +97,10 @@ interface Session {
   segHasSpeech: boolean;
   lastLiveAt: number;
   noise: number;
+  /** पछिल्लो ~२ सेकेन्डका स्तरहरू — recent RMS values (about 2 s) */
+  rmsWindow: number[];
+  /** यो पटकको सबैभन्दा चर्को स्तर — loudest RMS so far in this recording */
+  maxRms: number;
   /** पक्का भएका टुक्राहरू (क्रम अनुसार) — committed segment texts, in order */
   segments: string[];
   interim: string;
@@ -112,6 +142,8 @@ export function useVoiceInput(
   const [modelProgress, setModelProgress] = useState<number | null>(0);
   const [refining, setRefining] = useState(false);
   const [error, setError] = useState('');
+  /** mic बाट आवाज धेरै सानो आइरहेको छ — the microphone signal is very quiet */
+  const [quietMic, setQuietMic] = useState(false);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
 
   const workerRef = useRef<Worker | null>(null);
@@ -157,7 +189,7 @@ export function useVoiceInput(
   ) => {
     const worker = workerRef.current;
     if (!worker) return;
-    const audio = slice(s, from, to);
+    const audio = normalize(slice(s, from, to));
     const id = nextId.current++;
     jobs.current.set(id, { session: s, kind, to, index });
     s.openJobs++;
@@ -249,7 +281,7 @@ export function useVoiceInput(
         if (!job) return;
         const s = job.session;
         s.openJobs--;
-        const text = HALLUCINATION.test(msg.text) ? '' : msg.text.trim();
+        const text = cleanText(msg.text);
         if (job.kind === 'commit' && job.index !== undefined) {
           s.segments[job.index] = text;
           if (s.interimTo <= job.to) s.interim = '';
@@ -296,6 +328,7 @@ export function useVoiceInput(
   const tick = (s: Session) => {
     if (session.current !== s) return;
     const seconds = (Date.now() - s.startedAt) / 1000;
+    if (seconds > 2.5) setQuietMic(s.maxRms < QUIET_MIC_RMS);
     setState({ stage: 'recording', seconds: Math.floor(seconds) });
     if (seconds >= MAX_SECONDS) {
       stop();
@@ -402,6 +435,8 @@ export function useVoiceInput(
       segHasSpeech: false,
       lastLiveAt: 0,
       noise: 0.002,
+      rmsWindow: [],
+      maxRms: 0,
       segments: [],
       interim: '',
       interimTo: 0,
@@ -420,18 +455,24 @@ export function useVoiceInput(
       let sum = 0;
       for (let i = 0; i < copy.length; i++) sum += copy[i] * copy[i];
       const rms = Math.sqrt(sum / copy.length);
-      const threshold = Math.max(MIN_SPEECH_RMS, s.noise * 2.2);
-      if (rms > threshold) {
+      s.maxRms = Math.max(s.maxRms, rms);
+      // पछिल्लो २ सेकेन्डको सबैभन्दा शान्त भाग = पृष्ठभूमि हल्ला — the quiet end of the last 2 s is the noise floor.
+      s.rmsWindow.push(rms);
+      if (s.rmsWindow.length > 32) s.rmsWindow.shift();
+      if (s.rmsWindow.length >= 6) {
+        const sorted = [...s.rmsWindow].sort((a, b) => a - b);
+        s.noise = sorted[Math.floor(sorted.length * 0.15)];
+      }
+      const threshold = Math.max(MIN_SPEECH_RMS, s.noise * SPEECH_OVER_NOISE);
+      if (rms > threshold && s.rmsWindow.length >= 6) {
         s.lastVoice = s.total;
         s.segHasSpeech = true;
-      } else {
-        // चुप्पीको बेला मात्र पृष्ठभूमि आवाज सिक्ने — learn the background level only from quiet frames.
-        s.noise = s.noise * 0.95 + rms * 0.05;
       }
     };
     session.current = s;
     setAnalyser(an);
     setState({ stage: 'recording', seconds: 0 });
+    setQuietMic(false);
     cbRef.current.onLive('');
   }, [getWorker]);
 
@@ -445,6 +486,7 @@ export function useVoiceInput(
     analyser,
     device,
     modelProgress,
+    quietMic,
     refining,
     language,
     setLanguage: (l: VoiceLanguage) => {
