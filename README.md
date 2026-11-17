@@ -44,7 +44,10 @@ npm.cmd run make
 
 ## पहिलोपटक प्रयोग गर्दा (First use)
 
-1. ⚙️ **Settings** → Claude API key राख्नुहोस् (https://console.anthropic.com/settings/keys)। Key Windows encryption ले सुरक्षित राखिन्छ।
+1. Guru panel वा ⚙️ Settings मा **🔗 Connect with Claude (Browser Login)** थिच्नुहोस्। Browser खुल्छ, आफ्नो Anthropic Console account छानेर Allow थिच्नुहोस्। Key copy गर्नु पर्दैन।
+   - पहिलोपटक app ले Anthropic को आधिकारिक `ant` CLI (GitHub, ~14 MB) ल्याउँछ, SHA-256 checksum जाँच्छ, र त्यसैले login गराउँछ। Login `%APPDATA%Anthropic` मा `simple-coding-studio` profile मा बस्छ।
+   - खर्च Anthropic Console को API credit बाट कटिन्छ (Claude.ai Pro/Max subscription बाट होइन)।
+   - वैकल्पिक: Settings मा API key पनि राख्न सकिन्छ। Key राखिएको भए त्यसलाई पहिलो प्राथमिकता दिइन्छ।
 2. **✨ नयाँ एप** थिचेर नयाँ Flutter project बनाउनुहोस्, वा **📁 खोल** / Drag & Drop ले पुरानो project खोल्नुहोस्।
 3. माथि दायाँ कमाण्ड छानेर **▶ चलाऊ · Run** थिच्नुहोस् (जस्तै "Chrome मा चलाऊ")।
 4. कोड नबुझे **🧑‍🏫 Guru** मा 📖 बुझाऊ, 🩺 गल्ती खोज, वा 🗺️ एप योजना थिच्नुहोस्।
@@ -73,6 +76,7 @@ src/
 │  ├─ fileSystem.ts        फाइल पढ्ने/लेख्ने (खोलिएको project भित्र मात्र)
 │  ├─ runner.ts            ▶ Run presets (flutter, dart, npm, python)
 │  ├─ ai.ts                Guru — Claude API (streaming)
+│  ├─ claudeLogin.ts       Connect with Claude — ant CLI browser login
 │  └─ settings.ts          API key (encrypted) र model
 └─ renderer/
    ├─ App.tsx              मुख्य layout

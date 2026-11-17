@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ipcMain, type WebContents } from 'electron';
 import type { AiContext, AiEvent, AiMode, AiRequest } from '../shared/types';
+import { CLAUDE_PROFILE, isClaudeConnected } from './claudeLogin';
 import { getApiKey, getModel } from './settings';
 
 // API key main process मा मात्र रहन्छ। UI (renderer) ले key कहिल्यै देख्दैन।
@@ -54,13 +55,15 @@ function send(target: WebContents, event: AiEvent) {
 
 async function handleAsk(target: WebContents, req: AiRequest) {
   const { requestId } = req;
+  // API key भए त्यही, नभए browser login (profile) — Prefer a saved API key, else the browser-login profile.
   const apiKey = getApiKey();
-  if (!apiKey) {
+  const connected = !apiKey && isClaudeConnected();
+  if (!apiKey && !connected) {
     send(target, {
       requestId,
       type: 'error',
       message:
-        'पहिले ⚙️ Settings मा Claude API key राख्नुहोस् — Add your Claude API key in ⚙️ Settings first.',
+        'पहिले "Connect with Claude" थिचेर आफ्नो account जोड्नुहोस् — Press "Connect with Claude" first.',
     });
     return;
   }
@@ -96,7 +99,9 @@ async function handleAsk(target: WebContents, req: AiRequest) {
   const model = getModel();
   const controller = new AbortController();
   active.set(requestId, controller);
-  const client = new Anthropic({ apiKey });
+  const client = apiKey
+    ? new Anthropic({ apiKey })
+    : new Anthropic({ profile: CLAUDE_PROFILE });
 
   try {
     // Opus/Sonnet ले कहिलेकाहीं अस्वीकार गरे अर्को model मा आफैं सर्ने (server-side fallback)।

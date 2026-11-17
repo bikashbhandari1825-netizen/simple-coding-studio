@@ -5,6 +5,7 @@ import {
   type SettingsInfo,
 } from '../../shared/types';
 import { errorText } from '../lib/helpers';
+import { ConnectClaude } from './ConnectClaude';
 
 export function Modal({
   title,
@@ -130,13 +131,18 @@ export function SettingsDialog({
 
   return (
     <Modal title="⚙️ सेटिङ · Settings" onClose={onClose}>
-      <label className="mb-1 block text-sm font-medium text-slate-300">
-        Claude API key
+      <label className="mb-2 block text-sm font-medium text-slate-300">
+        Claude account
+      </label>
+      <ConnectClaude settings={settings} onChange={onChange} />
+
+      <label className="mt-5 mb-1 block text-sm font-medium text-slate-300">
+        वा API key (वैकल्पिक) · Or an API key (optional)
       </label>
       <p className="mb-2 text-xs text-slate-400">
         {settings.hasApiKey
           ? '✅ Key सुरक्षित रूपमा राखिएको छ (Windows encryption) — A key is saved securely.'
-          : 'Guru (AI tutor) चलाउन key चाहिन्छ — Guru needs a key.'}{' '}
+          : 'Key राखे यो browser login भन्दा पहिले प्रयोग हुन्छ — A saved key takes priority over the browser login.'}{' '}
         <a
           href="https://console.anthropic.com/settings/keys"
           target="_blank"

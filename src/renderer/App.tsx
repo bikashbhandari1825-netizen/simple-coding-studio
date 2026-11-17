@@ -52,6 +52,7 @@ export default function App() {
   const [tutorOpen, setTutorOpen] = useState(true);
   const [settings, setSettings] = useState<SettingsInfo>({
     hasApiKey: false,
+    claudeConnected: false,
     model: 'claude-opus-5-5',
   });
   const [dialog, setDialog] = useState<DialogKind>(null);
@@ -562,7 +563,8 @@ export default function App() {
         {tutorOpen && (
           <aside className="w-[380px] shrink-0 border-l border-slate-700">
             <TutorPanel
-              hasApiKey={settings.hasApiKey}
+              settings={settings}
+              onSettingsChange={setSettings}
               getContext={getContext}
               pending={pendingTutor}
               onPendingHandled={handlePendingHandled}
@@ -586,9 +588,9 @@ export default function App() {
         )}
         {activeTab && <span>{activeTab.language}</span>}
         <span>
-          {settings.hasApiKey
+          {settings.hasApiKey || settings.claudeConnected
             ? '🧑‍🏫 Guru तयार · ready'
-            : '🧑‍🏫 Guru: key चाहिन्छ · needs key'}
+            : '🧑‍🏫 Guru: Claude जोड्नुहोस् · connect Claude'}
         </span>
       </footer>
 

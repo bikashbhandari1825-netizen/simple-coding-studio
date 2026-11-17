@@ -1,6 +1,7 @@
 import { app, ipcMain, safeStorage } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { isClaudeConnected } from './claudeLogin';
 import { AI_MODELS, type AiModelId, type SettingsInfo } from '../shared/types';
 
 // API key Windows को आफ्नै encryption (DPAPI) ले बन्द गरेर राखिन्छ, plain text मा होइन।
@@ -30,7 +31,11 @@ function info(s: StoredSettings = load()): SettingsInfo {
   const model = AI_MODELS.some((m) => m.id === s.model)
     ? (s.model as AiModelId)
     : 'claude-opus-5-5';
-  return { hasApiKey: Boolean(s.apiKeyEncrypted), model };
+  return {
+    hasApiKey: Boolean(s.apiKeyEncrypted),
+    claudeConnected: isClaudeConnected(),
+    model,
+  };
 }
 
 export function getApiKey(): string | null {

@@ -82,8 +82,15 @@ export const AI_MODELS = [
 
 export type AiModelId = (typeof AI_MODELS)[number]['id'];
 
+export interface ClaudeLoginProgress {
+  stage: 'idle' | 'installing' | 'waiting' | 'done';
+  message: string;
+}
+
 export interface SettingsInfo {
   hasApiKey: boolean;
+  /** Browser बाट Claude account जोडिएको छ — Connected through the browser login. */
+  claudeConnected: boolean;
   model: AiModelId;
 }
 
@@ -125,6 +132,15 @@ export interface StudioApi {
   askAi(request: AiRequest): Promise<void>;
   cancelAi(requestId: string): Promise<void>;
   onAiEvent(listener: (event: AiEvent) => void): () => void;
+
+  // Connect with Claude (browser login)
+  connectClaude(): Promise<boolean>;
+  cancelClaudeLogin(): Promise<void>;
+  disconnectClaude(): Promise<boolean>;
+  getClaudeStatus(): Promise<string>;
+  onClaudeProgress(
+    listener: (progress: ClaudeLoginProgress) => void,
+  ): () => void;
 }
 
 declare global {

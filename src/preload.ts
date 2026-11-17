@@ -6,7 +6,12 @@ import {
   webUtils,
   type IpcRendererEvent,
 } from 'electron';
-import type { AiEvent, RunEvent, StudioApi } from './shared/types';
+import type {
+  AiEvent,
+  RunEvent,
+  StudioApi,
+  ClaudeLoginProgress,
+} from './shared/types';
 
 function subscribe<T>(
   channel: string,
@@ -50,6 +55,13 @@ const api: StudioApi = {
   askAi: (request) => ipcRenderer.invoke('ai:ask', request),
   cancelAi: (requestId) => ipcRenderer.invoke('ai:cancel', requestId),
   onAiEvent: (listener) => subscribe<AiEvent>('ai:event', listener),
+
+  connectClaude: () => ipcRenderer.invoke('claude:login'),
+  cancelClaudeLogin: () => ipcRenderer.invoke('claude:cancelLogin'),
+  disconnectClaude: () => ipcRenderer.invoke('claude:logout'),
+  getClaudeStatus: () => ipcRenderer.invoke('claude:status'),
+  onClaudeProgress: (listener) =>
+    subscribe<ClaudeLoginProgress>('claude:progress', listener),
 };
 
 contextBridge.exposeInMainWorld('studio', api);

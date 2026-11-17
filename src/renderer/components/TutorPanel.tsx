@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AiChatMessage, AiContext, AiMode } from '../../shared/types';
+import type {
+  AiChatMessage,
+  AiContext,
+  AiMode,
+  SettingsInfo,
+} from '../../shared/types';
 import { errorText, newId } from '../lib/helpers';
+import { ConnectClaude } from './ConnectClaude';
 import { Markdown } from './Markdown';
 
 interface ChatItem {
@@ -22,7 +28,8 @@ export interface TutorRequest {
 }
 
 interface Props {
-  hasApiKey: boolean;
+  settings: SettingsInfo;
+  onSettingsChange: (s: SettingsInfo) => void;
   getContext: () => AiContext;
   /** बाहिरबाट पठाइएको प्रश्न (जस्तै console को "Guru लाई सोध") — A request pushed from outside. */
   pending: TutorRequest | null;
@@ -32,7 +39,8 @@ interface Props {
 }
 
 export function TutorPanel({
-  hasApiKey,
+  settings,
+  onSettingsChange,
   getContext,
   pending,
   onPendingHandled,
@@ -203,11 +211,22 @@ export function TutorPanel({
         </button>
       </div>
 
-      {!hasApiKey && (
+      {!settings.hasApiKey && !settings.claudeConnected && (
         <div className="m-3 rounded-lg border border-amber-700 bg-amber-950/50 p-3 text-sm text-amber-200">
-          Guru चलाउन Claude API key चाहिन्छ। — Guru needs a Claude API key.
-          <button className="btn-primary mt-2 w-full" onClick={onOpenSettings}>
-            ⚙️ Key राख्नुहोस् · Add key
+          <p className="mb-2">
+            Guru चलाउन आफ्नो Claude account जोड्नुहोस्। — Connect your Claude
+            account to use Guru.
+          </p>
+          <ConnectClaude
+            settings={settings}
+            onChange={onSettingsChange}
+            compact
+          />
+          <button
+            className="mt-2 text-xs text-slate-400 underline hover:text-slate-200"
+            onClick={onOpenSettings}
+          >
+            वा API key राख्नुहोस् · or use an API key
           </button>
         </div>
       )}
