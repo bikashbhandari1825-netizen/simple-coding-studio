@@ -253,11 +253,20 @@ export function AccountMenu({
   return (
     <div ref={ref} className="relative">
       <button
-        className={`chip max-w-[170px] shrink-0 truncate ${account.waiting ? 'animate-pulse' : ''}`}
+        className={`account-chip flex max-w-[190px] shrink-0 items-center gap-1.5 rounded-full py-0.5 pr-2.5 pl-0.5 text-xs text-slate-100 ${account.waiting ? 'animate-pulse' : ''}`}
         title={`Switch Account / Logout${s.email ? ` — ${s.email}` : ''}`}
+        aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        {compact ? '👤 ▾' : `👤 ${s.email ?? 'Account'} ▾`}
+        <span className="avatar grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-bold">
+          {(s.email ?? '?').slice(0, 1).toUpperCase()}
+        </span>
+        {!compact && <span className="truncate">{s.email ?? 'Account'}</span>}
+        <span
+          className={`text-[9px] text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          ▼
+        </span>
       </button>
       {open && (
         <div className="glass-pop absolute right-0 z-30 mt-2 w-72 rounded-2xl p-2">
@@ -265,11 +274,22 @@ export function AccountMenu({
             <WaitingBox account={account} />
           ) : (
             <>
-              <p className="px-2 pb-2 text-[11px] text-slate-400">
-                {planLabel(s)}
-              </p>
+              <div className="mb-2 flex items-center gap-3 rounded-xl border border-white/10 bg-gradient-to-br from-sky-500/15 via-violet-500/15 to-fuchsia-500/10 p-3">
+                <span className="avatar grid h-10 w-10 shrink-0 place-items-center rounded-full text-base font-bold">
+                  {(s.email ?? '?').slice(0, 1).toUpperCase()}
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-white">
+                    {s.email ?? 'Claude account'}
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+                    {planLabel(s)}
+                  </div>
+                </div>
+              </div>
               <button
-                className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-slate-100 hover:bg-white/10 hover:shadow-[0_0_14px_-6px_rgba(56,189,248,0.7)]"
+                className="menu-item flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-slate-100"
                 onClick={() => {
                   setOpen(false);
                   void account.login(true);
@@ -278,7 +298,7 @@ export function AccountMenu({
                 {tr('🔄 Switch Account · अर्को email')}
               </button>
               <button
-                className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-rose-300 hover:bg-rose-500/10 hover:shadow-[0_0_14px_-6px_rgba(244,63,94,0.7)]"
+                className="menu-item menu-danger flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-rose-300"
                 onClick={() => {
                   setOpen(false);
                   void account.logout();

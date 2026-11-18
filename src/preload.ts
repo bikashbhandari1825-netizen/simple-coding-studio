@@ -66,6 +66,10 @@ const api: StudioApi = {
   diagUpdate: (filePath, text, kind) =>
     ipcRenderer.invoke('diag:update', filePath, text, kind),
   onDiagEvent: (listener) => subscribe<DiagEvent>('diag:event', listener),
+  diagComplete: (filePath, text, line, column) =>
+    ipcRenderer.invoke('diag:complete', filePath, text, line, column),
+  diagCodeActions: (filePath, text, range, diagnostics) =>
+    ipcRenderer.invoke('diag:codeActions', filePath, text, range, diagnostics),
 
   speakerAvailable: () => ipcRenderer.invoke('speaker:available'),
   speakerPrepare: () => ipcRenderer.invoke('speaker:prepare'),

@@ -29,6 +29,8 @@ import { LangSwitch } from './components/LangSwitch';
 import { analyzeOutput, type FixTip } from './lib/errorAnalyzer';
 import type { EditorDiagnostic } from '../shared/types';
 import { useNavHistory, type NavLoc } from './lib/useNavHistory';
+import { setNotifier, setOpenFiles } from './intellisense';
+import type { VoiceCommand } from './lib/voiceCommands';
 
 type DialogKind =
   | 'newFile'
@@ -102,6 +104,10 @@ export default function App() {
     (text: string) => showToast(text, true),
     [showToast],
   );
+
+  // 💡 IntelliSense लाई खुला फाइल र सूचना दिने — tell IntelliSense the open files and how to notify.
+  useEffect(() => setNotifier(showToast), [showToast]);
+  useEffect(() => setOpenFiles(tabs.map((t) => t.path)), [tabs]);
 
   useEffect(() => {
     if (!toast) return;
@@ -379,14 +385,15 @@ export default function App() {
   }, [saveActive, project]);
 
   // ---------- Run ----------
-  const runSelected = async () => {
-    if (!project || !presetId) return;
-    const preset = presets.find((p) => p.id === presetId);
+  const runSelected = (id = presetId) => runPreset(id);
+  const runPreset = async (id: string) => {
+    if (!project || !id) return;
+    const preset = presets.find((p) => p.id === id);
     try {
       await saveAll(); // चलाउनुअघि सबै सेभ — save everything before running
       interactiveRef.current = Boolean(preset?.interactive);
       setConsoleOpen(true);
-      await window.studio.run(project.rootPath, presetId, activePath);
+      await window.studio.run(project.rootPath, id, activePath);
     } catch (err) {
       pushLine('error', errorText(err));
     }
@@ -400,6 +407,37 @@ export default function App() {
     if (proj) {
       applyProject(proj);
       showToast(tr('✨ नयाँ Flutter एप तयार भयो! · New Flutter app created!'));
+    }
+  };
+
+  // ---------- 🎙️ Voice commands (हात नचलाई) ----------
+  const handleVoiceCommand = (cmd: VoiceCommand) => {
+    if (cmd === 'save') void saveActive();
+    else if (cmd === 'stop') void window.studio.stopRun();
+    else if (cmd === 'back') nav.back();
+    else if (cmd === 'forward') nav.forward();
+    else if (cmd === 'findFile') {
+      if (project) setDialog('quickOpen');
+    } else if (cmd === 'run' || cmd === 'runChrome') {
+      if (!project) {
+        showError(tr('पहिले project खोल्नुहोस् · Open a project first'));
+        return;
+      }
+      const id =
+        cmd === 'run'
+          ? presetId
+          : (
+              presets.find((p) => p.id === 'flutter-web') ??
+              presets.find((p) => /web|chrome/i.test(p.id))
+            )?.id;
+      if (!id) {
+        showError(
+          tr('यो project Chrome मा चल्दैन · This project cannot run in Chrome'),
+        );
+        return;
+      }
+      setPresetId(id);
+      void runPreset(id);
     }
   };
 
@@ -722,6 +760,8 @@ export default function App() {
             endLineNumber: d.endLine,
             endColumn: Math.max(d.endColumn, d.column + 1),
             source: source === 'dart' ? 'Dart' : 'Python',
+            // Quick Fix का लागि Dart लाई error को code चाहिन्छ — Dart needs the error code to offer quick fixes
+            code: d.code,
           })),
         );
       }
@@ -986,11 +1026,12 @@ export default function App() {
         <LangSwitch value={uiLang} onChange={changeLang} />
         <AccountMenu account={account} />
         <button
-          className="btn-ghost shrink-0"
-          title="Settings"
+          className="btn-ghost gear shrink-0"
+          title={tr('सेटिङ · Settings')}
+          aria-label="Settings"
           onClick={() => setDialog('settings')}
         >
-          ⚙️
+          <span className="inline-block">⚙️</span>
         </button>
       </header>
 
@@ -1114,6 +1155,7 @@ export default function App() {
                 ? baseName(activeTab.path)
                 : null
             }
+            onVoiceCommand={handleVoiceCommand}
             onJumpTo={(line, column) => {
               const editor = editorRef.current;
               if (!editor) return;

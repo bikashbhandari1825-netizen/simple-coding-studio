@@ -250,6 +250,65 @@ input[type='checkbox'] {
   -webkit-app-region: no-drag;
 }
 
+/* 👤 Account: gradient avatar, glass chip र menu — account chip, avatar and menu items */
+.avatar {
+  color: #fff;
+  background: conic-gradient(
+    from 210deg,
+    var(--neon-1),
+    var(--neon-2),
+    var(--neon-3),
+    var(--neon-1)
+  );
+  box-shadow:
+    0 0 0 2px rgba(5, 8, 22, 0.9),
+    0 0 14px -2px rgba(167, 139, 250, 0.8);
+}
+.account-chip {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0.02)
+  );
+  backdrop-filter: blur(12px);
+}
+.account-chip:hover,
+.account-chip[aria-expanded='true'] {
+  border-color: rgba(167, 139, 250, 0.6);
+  box-shadow: 0 0 18px -4px rgba(167, 139, 250, 0.7);
+}
+.menu-item {
+  border: 1px solid transparent;
+}
+.menu-item:hover {
+  background: linear-gradient(
+    90deg,
+    rgba(56, 189, 248, 0.16),
+    rgba(167, 139, 250, 0.12)
+  );
+  border-color: rgba(125, 211, 252, 0.3);
+  box-shadow: 0 0 18px -8px rgba(56, 189, 248, 0.9);
+  transform: translateX(2px);
+}
+.menu-danger:hover {
+  background: linear-gradient(
+    90deg,
+    rgba(244, 63, 94, 0.18),
+    rgba(236, 72, 153, 0.1)
+  );
+  border-color: rgba(251, 113, 133, 0.35);
+  box-shadow: 0 0 18px -8px rgba(244, 63, 94, 0.9);
+}
+
+.gear span {
+  transition: transform 500ms var(--ease);
+}
+.gear:hover span {
+  transform: rotate(90deg);
+  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.9));
+}
+
 /* ← → नेभिगेसन बटन — glowing Back / Forward pair */
 .nav-pair {
   border: 1px solid rgba(148, 163, 184, 0.16);
@@ -422,6 +481,24 @@ input[type='checkbox'] {
   }
   .glass-input:hover {
     border-color: rgba(167, 139, 250, 0.45) !important;
+  }
+}
+
+/* 🔊 Guru बोल्दै गर्दा header को चम्किलो pill — glowing "speaking" pill in the Guru header */
+.speaking-pill {
+  background: linear-gradient(
+    135deg,
+    rgba(14, 165, 233, 0.55),
+    rgba(139, 92, 246, 0.55),
+    rgba(236, 72, 153, 0.5)
+  );
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 22px -4px rgba(139, 92, 246, 0.8);
+  animation: breathe-pill 2.2s ease-in-out infinite;
+}
+@keyframes breathe-pill {
+  50% {
+    box-shadow: 0 0 30px -2px rgba(56, 189, 248, 0.85);
   }
 }
 

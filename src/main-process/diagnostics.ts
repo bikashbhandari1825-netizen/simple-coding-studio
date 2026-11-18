@@ -104,10 +104,27 @@ class DartServer {
       rootUri,
       workspaceFolders: [{ uri: rootUri, name: path.basename(root) }],
       capabilities: {
-        textDocument: { publishDiagnostics: { relatedInformation: false } },
+        textDocument: {
+          publishDiagnostics: { relatedInformation: false },
+          completion: {
+            completionItem: {
+              snippetSupport: true,
+              documentationFormat: ['plaintext', 'markdown'],
+            },
+          },
+          codeAction: {
+            codeActionLiteralSupport: {
+              codeActionKind: { valueSet: ['quickfix', 'refactor', 'source'] },
+            },
+          },
+        },
         workspace: { configuration: true },
       },
-      initializationOptions: { onlyAnalyzeProjectsWithOpenFiles: true },
+      initializationOptions: {
+        onlyAnalyzeProjectsWithOpenFiles: true,
+        // import नगरिएका हजारौँ सुझाव नल्याउने (छिटो) — skip thousands of not-yet-imported suggestions (faster)
+        suggestFromUnimportedLibraries: false,
+      },
     }).then(() => this.notify('initialized', {}));
   }
 
@@ -121,10 +138,20 @@ class DartServer {
   }
 
   private pending = new Map<number, (v: unknown) => void>();
-  private request(method: string, params: object): Promise<unknown> {
+  private request(
+    method: string,
+    params: object,
+    timeoutMs = 0,
+  ): Promise<unknown> {
     const id = this.nextId++;
     this.write({ id, method, params });
-    return new Promise((resolve) => this.pending.set(id, resolve));
+    return new Promise((resolve) => {
+      this.pending.set(id, resolve);
+      if (timeoutMs)
+        setTimeout(() => {
+          if (this.pending.delete(id)) resolve(null);
+        }, timeoutMs);
+    });
   }
   private notify(method: string, params: object) {
     this.write({ method, params });
@@ -235,9 +262,168 @@ class DartServer {
       textDocument: { uri: pathToFileURL(file).href },
     });
   }
+  /** 💡 IntelliSense: कर्सरमा मिल्ने सुझावहरू — completion suggestions at the cursor. */
+  async complete(file: string, text: string, line: number, column: number) {
+    await this.change(file, text);
+    const res = (await this.request(
+      'textDocument/completion',
+      {
+        textDocument: { uri: pathToFileURL(file).href },
+        position: { line: line - 1, character: column - 1 },
+      },
+      6000,
+    )) as LspCompletionItem[] | { items?: LspCompletionItem[] } | null;
+    const items = Array.isArray(res) ? res : (res?.items ?? []);
+    return items
+      .slice()
+      .sort((a, b) =>
+        (a.sortText ?? a.label).localeCompare(b.sortText ?? b.label),
+      )
+      .slice(0, 250)
+      .map((it) => ({
+        label: it.label,
+        kind: it.kind ?? 1,
+        detail: it.detail,
+        documentation:
+          typeof it.documentation === 'string'
+            ? it.documentation
+            : it.documentation?.value,
+        insertText: it.textEdit?.newText ?? it.insertText ?? it.label,
+        isSnippet: it.insertTextFormat === 2,
+        sortText: it.sortText,
+        filterText: it.filterText,
+      }));
+  }
+
+  /** 🔧 Quick fix: गल्ती सच्याउने तयारी सुझाव (यही फाइलका edit मात्र) — quick fixes (edits to this file only). */
+  async codeActions(
+    file: string,
+    text: string,
+    range: { line: number; column: number; endLine: number; endColumn: number },
+    diagnostics: {
+      line: number;
+      column: number;
+      endLine: number;
+      endColumn: number;
+      message: string;
+      code?: string;
+      severity: string;
+    }[],
+  ) {
+    await this.change(file, text);
+    const uri = pathToFileURL(file).href;
+    const toRange = (r: {
+      line: number;
+      column: number;
+      endLine: number;
+      endColumn: number;
+    }) => ({
+      start: { line: r.line - 1, character: r.column - 1 },
+      end: { line: r.endLine - 1, character: r.endColumn - 1 },
+    });
+    const res = (await this.request(
+      'textDocument/codeAction',
+      {
+        textDocument: { uri },
+        range: toRange(range),
+        context: {
+          diagnostics: diagnostics.map((d) => ({
+            range: toRange(d),
+            message: d.message,
+            code: d.code,
+            source: 'dart',
+            severity:
+              d.severity === 'error' ? 1 : d.severity === 'warning' ? 2 : 3,
+          })),
+          only: ['quickfix'],
+        },
+      },
+      6000,
+    )) as LspCodeAction[] | null;
+    const same = (u: string) => {
+      try {
+        return (
+          path.resolve(fileURLToPath(u)).toLowerCase() ===
+          path.resolve(file).toLowerCase()
+        );
+      } catch {
+        return false;
+      }
+    };
+    const out: {
+      title: string;
+      preferred: boolean;
+      edits: {
+        line: number;
+        column: number;
+        endLine: number;
+        endColumn: number;
+        text: string;
+      }[];
+    }[] = [];
+    for (const a of res ?? []) {
+      if (!a || typeof a.title !== 'string' || !a.edit) continue;
+      const edits: LspTextEdit[] = [];
+      let foreign = false;
+      for (const [u, list] of Object.entries(a.edit.changes ?? {})) {
+        if (same(u)) edits.push(...list);
+        else foreign = true;
+      }
+      for (const dc of a.edit.documentChanges ?? []) {
+        if (dc.textDocument && same(dc.textDocument.uri))
+          edits.push(...(dc.edits ?? []));
+        else foreign = true;
+      }
+      // अरू फाइल छुने वा खाली fix नदेखाउने — skip fixes that touch other files or change nothing
+      if (foreign || !edits.length) continue;
+      out.push({
+        title: a.title,
+        preferred: Boolean(a.isPreferred),
+        edits: edits.map((e) => ({
+          line: e.range.start.line + 1,
+          column: e.range.start.character + 1,
+          endLine: e.range.end.line + 1,
+          endColumn: e.range.end.character + 1,
+          text: e.newText,
+        })),
+      });
+    }
+    return out.slice(0, 12);
+  }
+
   dispose() {
     if (this.proc.exitCode === null) this.proc.kill();
   }
+}
+
+interface LspTextEdit {
+  range: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+  newText: string;
+}
+interface LspCompletionItem {
+  label: string;
+  kind?: number;
+  detail?: string;
+  documentation?: string | { value: string };
+  insertText?: string;
+  insertTextFormat?: number;
+  textEdit?: { newText: string };
+  sortText?: string;
+  filterText?: string;
+}
+interface LspCodeAction {
+  title: string;
+  isPreferred?: boolean;
+  edit?: {
+    changes?: Record<string, LspTextEdit[]>;
+    documentChanges?: {
+      textDocument?: { uri: string };
+      edits?: LspTextEdit[];
+    }[];
+  };
 }
 
 const dartServers = new Map<string, DartServer>();
@@ -335,6 +521,58 @@ export function registerDiagnosticsHandlers(): void {
       } else if (ext === '.py' && kind !== 'close') {
         send(file, 'python', await checkPython(file, text));
       }
+    },
+  );
+
+  ipcMain.handle(
+    'diag:complete',
+    async (
+      _e,
+      filePath: string,
+      text: string,
+      line: number,
+      column: number,
+    ) => {
+      const file = assertInsideProject(filePath);
+      if (path.extname(file).toLowerCase() !== '.dart') return [];
+      const server = dartServerFor(file);
+      if (!server || typeof text !== 'string') return [];
+      return server.complete(file, text, Number(line), Number(column));
+    },
+  );
+
+  ipcMain.handle(
+    'diag:codeActions',
+    async (
+      _e,
+      filePath: string,
+      text: string,
+      range: {
+        line: number;
+        column: number;
+        endLine: number;
+        endColumn: number;
+      },
+      diagnostics: {
+        line: number;
+        column: number;
+        endLine: number;
+        endColumn: number;
+        message: string;
+        code?: string;
+        severity: string;
+      }[],
+    ) => {
+      const file = assertInsideProject(filePath);
+      if (path.extname(file).toLowerCase() !== '.dart') return [];
+      const server = dartServerFor(file);
+      if (!server || typeof text !== 'string' || !range) return [];
+      return server.codeActions(
+        file,
+        text,
+        range,
+        Array.isArray(diagnostics) ? diagnostics.slice(0, 20) : [],
+      );
     },
   );
 }

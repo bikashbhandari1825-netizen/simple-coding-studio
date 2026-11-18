@@ -32,9 +32,17 @@ How to answer:
   2. "🔤 शब्द-शब्द / Word by word": each keyword, symbol and name that appears (for example \`void\`, \`main\`, \`(\`, \`)\`, \`{\`, \`}\`, \`;\`, \`=\`, \`print\`, \`return\`, \`class\`, \`final\`) with what it means and what it does, in very simple words. Do not repeat a word already explained earlier in this conversation unless asked.
   3. "⚙️ कसरी चल्छ / How it runs": two or three sentences on the order things run in and why.
   Use simple words a 12-year-old could follow.
-- The learner runs commands with buttons, not a terminal. When a command is needed, name the button in this app if one fits (for example "Chrome मा चलाऊ / Run in Chrome", "प्याकेजहरू ल्याऊ / Get packages", "APK बनाऊ / Build APK").`;
+- The learner runs commands with buttons, not a terminal. When a command is needed, name the button in this app if one fits (for example "Chrome मा चलाऊ / Run in Chrome", "प्याकेजहरू ल्याऊ / Get packages", "APK बनाऊ / Build APK").
+- Quiz: when you asked quiz questions and the learner replies, treat the reply as their answers (they may have spoken them, so ignore small speech-to-text spelling mistakes). For each question say "✅ सही / Correct" or "❌ अलि मिलेन / Not quite", explain the right answer in one or two simple sentences, then give a short score like "२/२ 🎉". Encourage them warmly.`;
+
+// 🔧 AI Quick Fix: editor मा सिधै राख्ने सच्याइएको कोड मात्र — corrected code only, inserted straight into the editor.
+const QUICKFIX_SYSTEM_PROMPT = `You fix code inside a code editor. You receive numbered lines from a file and the errors on them.
+Return ONLY the corrected replacement for exactly the line range you are given, inside ONE fenced code block, with the same indentation style.
+Keep every line that is already correct. Do not add explanations, comments about the fix, or any text outside the code block.
+If a name looks like a typo or unfinished word (for example "nn n" or "prnt"), replace it with the most likely intended code.`;
 
 const MODE_INSTRUCTIONS: Record<AiMode, string> = {
+  quickfix: '',
   chat: '',
   explain:
     'Explain the code below for a beginner. Start with one or two sentences on what the whole file or selection does. Then follow the MANDATORY code explanation rule: a table covering every line (Line | Code | नेपाली | English), then word by word for every keyword and symbol, then how it runs. End with "के सिक्यौं / What we learned" as 2-3 bullet points.',
@@ -115,6 +123,7 @@ function buildPrompt(req: AiRequest): string {
     );
   }
   const level = req.englishLevel ?? 1;
+  if (req.mode === 'quickfix') return parts.join('\n\n---\n\n');
   if (req.answerLang !== 'ne') {
     parts.push(
       ENGLISH_LEVELS[level] +
@@ -211,7 +220,7 @@ function handleAsk(target: WebContents, req: AiRequest) {
     '--strict-mcp-config',
     '--no-session-persistence',
     '--system-prompt',
-    SYSTEM_PROMPT,
+    req.mode === 'quickfix' ? QUICKFIX_SYSTEM_PROMPT : SYSTEM_PROMPT,
     ...(model === 'default' ? [] : ['--model', model]),
   ];
   const child = spawn(claude, args, {

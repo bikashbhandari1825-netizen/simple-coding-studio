@@ -45,7 +45,7 @@ export type RunEvent =
       stoppedByUser: boolean;
     };
 
-export type AiMode = 'chat' | 'explain' | 'fix' | 'blueprint';
+export type AiMode = 'chat' | 'explain' | 'fix' | 'blueprint' | 'quickfix';
 
 export interface AiChatMessage {
   role: 'user' | 'assistant';
@@ -202,6 +202,20 @@ export interface StudioApi {
     kind: 'open' | 'change' | 'close',
   ): Promise<void>;
   onDiagEvent(listener: (event: DiagEvent) => void): () => void;
+  /** 💡 Dart IntelliSense सुझाव — Dart completion suggestions at a 1-based position. */
+  diagComplete(
+    filePath: string,
+    text: string,
+    line: number,
+    column: number,
+  ): Promise<CompletionSuggestion[]>;
+  /** 🔧 Dart quick fixes for a range (edits to this file only). */
+  diagCodeActions(
+    filePath: string,
+    text: string,
+    range: TextRange,
+    diagnostics: EditorDiagnostic[],
+  ): Promise<QuickFix[]>;
 
   // 🔊 Speaker (Edge natural voices)
   speakerAvailable(): Promise<boolean>;
@@ -229,4 +243,30 @@ declare global {
   interface Window {
     studio: StudioApi;
   }
+}
+
+/** 1-based दायरा — a 1-based text range. */
+export interface TextRange {
+  line: number;
+  column: number;
+  endLine: number;
+  endColumn: number;
+}
+
+export interface CompletionSuggestion {
+  label: string;
+  /** LSP CompletionItemKind (1–25) */
+  kind: number;
+  detail?: string;
+  documentation?: string;
+  insertText: string;
+  isSnippet: boolean;
+  sortText?: string;
+  filterText?: string;
+}
+
+export interface QuickFix {
+  title: string;
+  preferred: boolean;
+  edits: (TextRange & { text: string })[];
 }

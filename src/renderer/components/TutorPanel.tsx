@@ -27,7 +27,15 @@ import {
   type EnglishLevel,
 } from '../lib/englishLevel';
 
+import {
+  COMMAND_LABELS,
+  parseVoiceCommand,
+  type VoiceCommand,
+} from '../lib/voiceCommands';
+import { fixFirstError } from '../intellisense';
+
 const TYPE_EXPLAIN_KEY = 'studio.guruTypeExplain';
+const AUTO_SPEAK_KEY = 'studio.guruAutoSpeak';
 
 interface ChatItem {
   id: string;
@@ -58,6 +66,8 @@ interface Props {
   editorErrors: EditorError[];
   activeFile: string | null;
   onJumpTo: (line: number, column: number) => void;
+  /** 🎙️ App-स्तरका आवाज आदेश (Run, Save, ← →…) — app-level voice commands */
+  onVoiceCommand?: (cmd: VoiceCommand) => void;
 }
 
 export interface EditorError {
@@ -81,6 +91,7 @@ export function TutorPanel({
   editorErrors,
   activeFile,
   onJumpTo,
+  onVoiceCommand,
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState('');
@@ -114,16 +125,44 @@ export function TutorPanel({
       setInput(joinBase(text));
     },
     (shown, better) => {
+      // 🎙️ छोटो आदेश भए काम गर्ने, पाठ नराख्ने — a short spoken command runs instead of becoming text.
+      const cmd = parseVoiceCommand(better);
+      if (cmd) {
+        setInput(voiceBase.current);
+        commandRef.current(cmd);
+        return;
+      }
       // तपाईंले पाठ नछोएको भए मात्र सुधारिएको पाठ राख्ने — replace only if you have not edited or sent it.
       setInput((prev) => (prev === joinBase(shown) ? joinBase(better) : prev));
     },
   );
   const listening = voice.state.stage === 'recording';
+  const commandRef = useRef<(cmd: VoiceCommand) => void>(() => undefined);
   // 🔊 Guru को जवाफ पढ्ने — read Guru's answers aloud
   const speaker = useSpeaker();
+  // 🔊 जवाफ सकिनेबित्तिकै आफैं सुनाउने (Gemini जस्तै) — read each finished answer aloud by itself.
+  const [autoSpeak, setAutoSpeak] = useState(() => {
+    try {
+      return localStorage.getItem(AUTO_SPEAK_KEY) !== 'off';
+    } catch {
+      return true;
+    }
+  });
+  const autoSpeakRef = useRef(autoSpeak);
+  autoSpeakRef.current = autoSpeak;
+  const toSpeak = useRef(new Set<string>());
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
+    // सकिएको जवाफ आफैं बोल्ने — speak answers that just finished
+    for (const id of toSpeak.current) {
+      const item = items.find((i) => i.id === id);
+      if (!item || item.streaming) continue;
+      toSpeak.current.delete(id);
+      if (item.content && !item.error)
+        void speaker.toggle(`${id}:all`, item.content);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- speaker.toggle is stable enough here
   }, [items]);
 
   useEffect(() => {
@@ -143,6 +182,8 @@ export function TutorPanel({
           return { ...item, streaming: false };
         }),
       );
+      if (event.type === 'done' && autoSpeakRef.current)
+        toSpeak.current.add(event.requestId);
       if (event.type !== 'text')
         setBusyId((id) => (id === event.requestId ? null : id));
     });
@@ -359,6 +400,26 @@ For each error: say which line, explain in simple words why it happened (what th
     });
   };
 
+  // 🧠 Quiz: बुझेको जाँच्न Guru ले २ प्रश्न सोध्छ — Guru asks two questions to check understanding.
+  const startQuiz = () => {
+    void ask({
+      mode: 'chat',
+      label: tr('🧠 मलाई जाँच · Quiz me'),
+      prompt:
+        'Quiz me on what you just explained. Ask exactly 2 short questions, numbered, in simple words (Nepali and English). Do not give the answers yet. Tell me to answer by pressing 🎤 and speaking, or by typing, and that you will then check my answers.',
+    });
+  };
+
+  commandRef.current = (cmd: VoiceCommand) => {
+    setLevelNote(`🎙️ ${tr(COMMAND_LABELS[cmd])}`);
+    if (cmd === 'explain') quick('explain');
+    else if (cmd === 'quiz') startQuiz();
+    else if (cmd === 'fixError') {
+      // editor मा गल्ती भए Guru ले सिधै सच्याउँछ; नभए run को output हेरेर — fix in the editor, else from the run output
+      if (!fixFirstError()) quick('fix');
+    } else onVoiceCommand?.(cmd);
+  };
+
   const hasCode = Boolean(getContext().code);
 
   return (
@@ -373,6 +434,21 @@ For each error: say which line, explain in simple words why it happened (what th
             नेपाली + English मा बुझाउँछ
           </div>
         </div>
+        {(speaker.speakingId || speaker.loadingId) && (
+          <button
+            className="speaking-pill flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-semibold text-white"
+            title={tr(
+              'Guru बोल्दैछ — रोक्न थिच्नुहोस् · Guru is speaking — press to stop',
+            )}
+            aria-label="Stop Guru speaking"
+            onClick={speaker.stop}
+          >
+            <SpeakWave pulse={speaker.pulse} width={70} height={18} />
+            {speaker.loadingId
+              ? tr('⏳ तयार · Starting')
+              : tr('⏹ बोल्दै · Speaking')}
+          </button>
+        )}
         {items.length > 0 && !busyId && (
           <button
             className="chip"
@@ -459,6 +535,30 @@ For each error: say which line, explain in simple words why it happened (what th
           />
           {tr('✍️ लेख्दा बुझाऊ · Explain as I type')}
         </label>
+        <label
+          className="flex cursor-pointer items-center gap-1"
+          title={tr(
+            'Guru को जवाफ सकिनेबित्तिकै आफैं ठूलो स्वरमा सुनाउने · Read every answer aloud as soon as it is written',
+          )}
+        >
+          <input
+            type="checkbox"
+            checked={autoSpeak}
+            onChange={(e) => {
+              setAutoSpeak(e.target.checked);
+              if (!e.target.checked) speaker.stop();
+              try {
+                localStorage.setItem(
+                  AUTO_SPEAK_KEY,
+                  e.target.checked ? 'on' : 'off',
+                );
+              } catch {
+                // ignore
+              }
+            }}
+          />
+          {tr('🔊 आफैं सुनाउ · Auto-speak')}
+        </label>
       </div>
       {levelNote && (
         <div
@@ -539,6 +639,7 @@ For each error: say which line, explain in simple words why it happened (what th
               )}
               {item.content && !item.streaming && (
                 <SpeakerBar
+                  onQuiz={busyId ? undefined : startQuiz}
                   id={item.id}
                   content={item.content}
                   speaker={speaker}
@@ -770,12 +871,14 @@ For each error: say which line, explain in simple words why it happened (what th
  * Under every answer: listen to all, Nepali only, or English only; pressing the same button again stops it.
  */
 function SpeakerBar({
+  onQuiz,
   id,
   content,
   speaker,
   hasNepali,
   hasEnglish,
 }: {
+  onQuiz?: () => void;
   id: string;
   content: string;
   speaker: ReturnType<typeof useSpeaker>;
@@ -804,6 +907,17 @@ function SpeakerBar({
   ];
   return (
     <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-700/70 pt-2">
+      {onQuiz && (
+        <button
+          className="chip"
+          title={tr(
+            'बुझ्नुभयो कि भएन जाँच्न Guru ले २ प्रश्न सोध्छ (🎤 बोलेर जवाफ दिन मिल्छ) · Guru asks 2 questions; answer by voice or typing',
+          )}
+          onClick={onQuiz}
+        >
+          {tr('🧠 जाँच · Quiz me')}
+        </button>
+      )}
       {hasNepali && (
         <select
           aria-label="Nepali voice"
