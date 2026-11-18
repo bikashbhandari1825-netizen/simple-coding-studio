@@ -56,8 +56,18 @@ const createWindow = () => {
     minWidth: 960,
     minHeight: 600,
     title: 'Simple Coding Studio',
-    backgroundColor: '#0f172a',
+    backgroundColor: '#0a1024',
     autoHideMenuBar: true,
+    // सेतो Windows title bar हटाएर app कै रङको बनाउने: toolbar नै title bar बन्छ,
+    // र दायाँका − ☐ ✕ बटन app को रङमा।
+    // Replace the white Windows title bar: the app's toolbar becomes the title bar and the
+    // − ☐ ✕ window buttons are drawn in the app's colours.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#0b1225',
+      symbolColor: '#cbd5e1',
+      height: 48,
+    },
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

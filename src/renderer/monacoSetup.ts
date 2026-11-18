@@ -53,3 +53,7 @@ if (ts) {
 }
 
 loader.config({ monaco });
+
+// स्वचालित परीक्षणका लागि (development मा मात्र) — exposed for automated tests, development only.
+if (location.protocol.startsWith('http'))
+  (window as unknown as { monaco: typeof monaco }).monaco = monaco;

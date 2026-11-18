@@ -28,6 +28,7 @@ import { getUiLang, setUiLang, tr, tr2, type UiLang } from './i18n';
 import { LangSwitch } from './components/LangSwitch';
 import { analyzeOutput, type FixTip } from './lib/errorAnalyzer';
 import type { EditorDiagnostic } from '../shared/types';
+import { useNavHistory, type NavLoc } from './lib/useNavHistory';
 
 type DialogKind =
   | 'newFile'
@@ -614,6 +615,57 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [reveal, activePath]);
 
+  // ---------- ← → Navigation history (VS Code जस्तै) ----------
+  const navGoTo = useCallback(
+    (loc: NavLoc) => {
+      const existing = tabs.find((t) => samePath(t.path, loc.path));
+      if (existing) setActivePath(existing.path);
+      else
+        void openFile({
+          name: baseName(loc.path),
+          path: loc.path,
+          isDirectory: false,
+        });
+      setReveal({
+        path: existing?.path ?? loc.path,
+        line: loc.line,
+        column: loc.column,
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- samePath is a pure helper
+    [tabs, openFile],
+  );
+  const nav = useNavHistory(activePath, navGoTo);
+  const navRef = useRef(nav);
+  navRef.current = nav;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === 'ArrowLeft') navRef.current.back();
+        else navRef.current.forward();
+      }
+    };
+    // माउसका साइड बटन (Back/Forward) पनि — mouse side buttons too
+    const onMouse = (e: MouseEvent) => {
+      if (e.button === 3) {
+        e.preventDefault();
+        navRef.current.back();
+      } else if (e.button === 4) {
+        e.preventDefault();
+        navRef.current.forward();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('mouseup', onMouse, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('mouseup', onMouse, true);
+    };
+  }, []);
+
   // ---------- Live editor errors (Dart analysis server, Python, TS/JS) ----------
   // टाइप गर्दै गर्दा गल्ती जाँच — check for mistakes while typing (Dart/Python go to the main process).
   const diagTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -813,13 +865,52 @@ export default function App() {
       onDrop={(e) => void onDrop(e)}
     >
       {/* Toolbar */}
-      <header className="glass-bar relative z-20 flex items-center gap-2 border-b px-3 py-2">
+      <header className="glass-bar title-bar relative z-20 flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <span className="mr-1 flex items-center gap-1.5 select-none">
           <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-sky-500 via-violet-500 to-fuchsia-500 text-sm shadow-[0_0_18px_rgba(167,139,250,0.55)]">
             🎓
           </span>
           <span className="brand text-[15px]">Studio</span>
         </span>
+        {/* ← → पछाडि / अगाडि — Back / Forward */}
+        <div className="nav-pair flex items-center rounded-xl p-0.5">
+          <button
+            className="nav-btn"
+            aria-label="Go back"
+            disabled={!nav.canBack}
+            title={tr('पछाडि जाऊ · Go back (Alt+←)')}
+            onClick={nav.back}
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path
+                d="M15 5l-7 7 7 7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <button
+            className="nav-btn"
+            aria-label="Go forward"
+            disabled={!nav.canForward}
+            title={tr('अगाडि जाऊ · Go forward (Alt+→)')}
+            onClick={nav.forward}
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path
+                d="M9 5l7 7-7 7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
         <button
           className="btn-ghost"
           title={tr('फोल्डर खोल · Open folder')}
@@ -941,7 +1032,10 @@ export default function App() {
                     scheduleDiagnostics(path, content);
                   }}
                   onSave={() => void saveActive()}
-                  onEditorReady={(editor) => (editorRef.current = editor)}
+                  onEditorReady={(editor) => {
+                    editorRef.current = editor;
+                    nav.attach(editor);
+                  }}
                 />
               </div>
               {consoleOpen ? (

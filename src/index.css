@@ -224,10 +224,67 @@ input[type='checkbox'] {
 }
 
 /* साँघुरो window मा toolbar मा icon मात्र — icon-only toolbar buttons on narrow windows */
-@media (max-width: 1500px) {
+@media (max-width: 1760px) {
   header .tb-label {
     display: none;
   }
+}
+
+/* 🪟 Toolbar = title bar: तानेर window सार्न मिल्ने; दायाँ − ☐ ✕ का लागि ठाउँ छोड्ने।
+   The toolbar is the title bar: drag it to move the window; leave room on the right for − ☐ ✕. */
+.title-bar {
+  -webkit-app-region: drag;
+  padding-right: 150px !important;
+  background: linear-gradient(
+    180deg,
+    #0b1225,
+    rgba(11, 18, 37, 0.92)
+  ) !important;
+}
+.title-bar button,
+.title-bar select,
+.title-bar input,
+.title-bar a,
+.title-bar [role='radiogroup'],
+.title-bar .glass-pop {
+  -webkit-app-region: no-drag;
+}
+
+/* ← → नेभिगेसन बटन — glowing Back / Forward pair */
+.nav-pair {
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.06),
+    rgba(255, 255, 255, 0.015)
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.nav-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 26px;
+  border-radius: 9px;
+  color: #cbd5e1;
+}
+.nav-btn:not(:disabled):hover {
+  color: #fff;
+  background: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.28),
+    rgba(167, 139, 250, 0.28)
+  );
+  box-shadow:
+    0 0 16px -2px rgba(56, 189, 248, 0.7),
+    inset 0 0 0 1px rgba(167, 139, 250, 0.45);
+}
+.nav-btn:not(:disabled):hover svg {
+  filter: drop-shadow(0 0 4px rgba(125, 211, 252, 0.9));
+}
+.nav-btn:disabled {
+  color: #475569;
+  cursor: default;
 }
 
 /* 💧 Ripple — click ripple (renderer/ui/ripple.ts adds the span) */
