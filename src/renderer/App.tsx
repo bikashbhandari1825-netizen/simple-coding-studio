@@ -24,7 +24,7 @@ import {
   rememberRecent,
   stripAnsi,
 } from './lib/helpers';
-import { getUiLang, setUiLang, tr, type UiLang } from './i18n';
+import { getUiLang, setUiLang, tr, tr2, type UiLang } from './i18n';
 import { LangSwitch } from './components/LangSwitch';
 import { analyzeOutput, type FixTip } from './lib/errorAnalyzer';
 import type { EditorDiagnostic } from '../shared/types';
@@ -437,6 +437,76 @@ export default function App() {
 
   const handlePendingHandled = useCallback(() => setPendingTutor(null), []);
 
+  // ✍️ लेख्दा बुझाऊ: नयाँ कोड लेखेर रोकिएपछि Guru ले नयाँ लाइन मात्र लाइन-लाइन, शब्द-शब्द बुझाउँछ।
+  // Explain as I type: after the learner writes new code and pauses, Guru explains only the new lines.
+  const typeSnap = useRef(new Map<string, Set<string>>());
+  const typeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const lastTypeExplain = useRef(0);
+  const typeLive = useRef({ getContext, loggedIn: false });
+  typeLive.current = {
+    getContext,
+    loggedIn: Boolean(account.status?.loggedIn),
+  };
+  const lineKey = (l: string) => l.trim();
+  const meaningful = (l: string) =>
+    l.length >= 3 && /[A-Za-z0-9]/.test(l) && !/^(\/\/|#|\*|\/\*)/.test(l);
+  const rememberLines = (path: string, content: string) =>
+    typeSnap.current.set(
+      path,
+      new Set(content.split('\n').map(lineKey).filter(Boolean)),
+    );
+  const scheduleTypeExplain = (path: string, before: string) => {
+    if (!typeSnap.current.has(path)) rememberLines(path, before);
+    clearTimeout(typeTimer.current);
+    typeTimer.current = setTimeout(function check() {
+      let on = true;
+      try {
+        on = localStorage.getItem('studio.guruTypeExplain') !== 'off';
+      } catch {
+        // ignore
+      }
+      const live = typeLive.current;
+      const model = editorRef.current?.getModel();
+      if (!on || !live.loggedIn || !model) return;
+      const ctx = live.getContext();
+      if (!ctx.fileName || !path.endsWith(ctx.fileName)) return;
+      const wait = 25_000 - (Date.now() - lastTypeExplain.current);
+      if (wait > 0) {
+        typeTimer.current = setTimeout(check, wait);
+        return;
+      }
+      // गल्ती भएको बेला Guru ले पहिले गल्ती बुझाउँछ — while there are errors, the error explainer goes first.
+      const errs = monaco.editor
+        .getModelMarkers({ resource: model.uri })
+        .filter((m) => m.severity === monaco.MarkerSeverity.Error);
+      if (errs.length) return;
+      const known = typeSnap.current.get(path) ?? new Set<string>();
+      const text = model.getValue();
+      const fresh = text
+        .split('\n')
+        .filter((l) => !known.has(lineKey(l)) && meaningful(lineKey(l)));
+      if (!fresh.length) return;
+      rememberLines(path, text);
+      lastTypeExplain.current = Date.now();
+      setPendingTutor({
+        mode: 'explain',
+        label: tr2(
+          `✍️ तपाईंले लेखेका ${fresh.length} नयाँ लाइन बुझाऊ`,
+          `✍️ Explain the ${fresh.length} new line(s) you wrote`,
+        ),
+        prompt:
+          'I just wrote the new lines below in my file. Explain each new line and each word/symbol in it, in very simple words, and tell me if anything looks wrong or could be better.',
+        context: {
+          ...ctx,
+          selection: fresh.slice(0, 40).join('\n'),
+          runOutput: undefined,
+        },
+      });
+    }, 4000);
+  };
+
   // Run असफल भएपछि output र गल्तीहरू सहित Guru आफैं बोलाउने — after a failed run, Guru explains it by itself.
   const [runFailedAt, setRunFailedAt] = useState(0);
   useEffect(() => {
@@ -842,6 +912,10 @@ export default function App() {
                   onSelect={setActivePath}
                   onClose={closeTab}
                   onChange={(path, content) => {
+                    scheduleTypeExplain(
+                      path,
+                      tabs.find((t) => t.path === path)?.content ?? '',
+                    );
                     setTabs((prev) =>
                       prev.map((t) =>
                         t.path === path ? { ...t, content } : t,

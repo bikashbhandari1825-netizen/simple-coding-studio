@@ -25,6 +25,19 @@ if (started) {
   app.quit();
 }
 
+// एउटै समयमा एउटा मात्र Studio: दोस्रो पटक खोल्दा पहिलेकै window अगाडि ल्याउने।
+// One Studio at a time: launching it again just brings the existing window forward.
+if (!started && !app.requestSingleInstanceLock()) {
+  app.exit(0);
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  });
+}
+
 const isDev = Boolean(MAIN_WINDOW_VITE_DEV_SERVER_URL);
 
 // Development मा मात्र: स्वचालित परीक्षणका लागि debug port खोल्ने।

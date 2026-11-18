@@ -68,6 +68,8 @@ export interface AiRequest {
   context?: AiContext;
   /** Guru ले कुन भाषामा जवाफ दिने — Which language Guru should answer in. */
   answerLang?: 'ne' | 'en' | 'both';
+  /** English कति सजिलो (1 सुरुवात … 4 प्राविधिक) — how simple Guru's English should be (1 basic … 4 technical). */
+  englishLevel?: 1 | 2 | 3 | 4;
 }
 
 export type AiErrorKind = 'auth' | 'limit';

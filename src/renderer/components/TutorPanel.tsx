@@ -18,6 +18,16 @@ import { getUiLang, tr, tr2 } from '../i18n';
 import { VoiceWave } from '../voice/VoiceWave';
 import { SpeakWave } from '../voice/SpeakWave';
 import { useSpeaker } from '../voice/useSpeaker';
+import {
+  adaptLevel,
+  LEVEL_NAMES,
+  LEVEL_UP_POINTS,
+  loadLevel,
+  saveLevel,
+  type EnglishLevel,
+} from '../lib/englishLevel';
+
+const TYPE_EXPLAIN_KEY = 'studio.guruTypeExplain';
 
 interface ChatItem {
   id: string;
@@ -75,6 +85,16 @@ export function TutorPanel({
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  // 📈 Progressive English लेभल — the learner's English level
+  const [eng, setEng] = useState(loadLevel);
+  const [levelNote, setLevelNote] = useState('');
+  const [typeExplain, setTypeExplain] = useState(() => {
+    try {
+      return localStorage.getItem(TYPE_EXPLAIN_KEY) !== 'off';
+    } catch {
+      return true;
+    }
+  });
   const endRef = useRef<HTMLDivElement>(null);
   // बोल्दै गर्दा शब्दहरू तुरुन्तै input मा देखाउने — show spoken words in the input box live.
   // रेकर्डिङ सुरु हुँदा box मा भएको पाठ यहीँ एकपटक मात्र समात्ने (React को ढिलो update मा भर नपर्ने)।
@@ -158,8 +178,31 @@ export function TutorPanel({
         { id: requestId, role: 'assistant', content: '', streaming: true },
       ]);
       setBusyId(requestId);
+      // आफैं लेखेको प्रश्नबाट English लेभल मिलाउने — adapt the English level from what the learner typed.
+      let level = eng.level;
+      if (req.mode === 'chat') {
+        const { state, change } = adaptLevel(eng, req.prompt);
+        setEng(state);
+        saveLevel(state);
+        level = state.level;
+        if (change === 'up')
+          setLevelNote(
+            tr2(
+              `🎉 बधाई छ! English लेभल ${state.level} (${LEVEL_NAMES[state.level]}) मा पुग्यो।`,
+              `🎉 Well done! Your English level is now ${state.level} (${LEVEL_NAMES[state.level]}).`,
+            ),
+          );
+        else if (change === 'down')
+          setLevelNote(
+            tr2(
+              `🙂 अब अझ सजिलो English (लेभल ${state.level}) मा बुझाउँछु।`,
+              `🙂 I will use simpler English now (level ${state.level}).`,
+            ),
+          );
+      }
       try {
         await window.studio.askAi({
+          englishLevel: level,
           answerLang: getUiLang(),
           requestId,
           mode: req.mode,
@@ -177,8 +220,14 @@ export function TutorPanel({
         setBusyId(null);
       }
     },
-    [busyId, items],
+    [busyId, items, eng],
   );
+
+  useEffect(() => {
+    if (!levelNote) return;
+    const t = setTimeout(() => setLevelNote(''), 7000);
+    return () => clearTimeout(t);
+  }, [levelNote]);
 
   useEffect(() => {
     if (pending && !busyId) {
@@ -335,6 +384,90 @@ For each error: say which line, explain in simple words why it happened (what th
         )}
         <AccountMenu account={account} compact />
       </div>
+
+      {/* 📈 English लेभल र ✍️ लेख्दा बुझाऊ — English level and explain-as-you-type */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-1.5 text-[11px] text-slate-300">
+        <label
+          className="flex items-center gap-1"
+          title={tr(
+            'Guru सुरुमा एकदमै सजिलो English बोल्छ र तपाईंको प्रगति हेरेर बिस्तारै लेभल बढाउँछ · Guru starts with very simple English and raises the level as you progress',
+          )}
+        >
+          {tr('📈 English:')}
+          <select
+            aria-label="English level"
+            className="rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-slate-100"
+            value={eng.auto ? 'auto' : String(eng.level)}
+            onChange={(e) => {
+              const v = e.target.value;
+              const next =
+                v === 'auto'
+                  ? { ...eng, auto: true }
+                  : {
+                      auto: false,
+                      level: Number(v) as EnglishLevel,
+                      points: 0,
+                    };
+              setEng(next);
+              saveLevel(next);
+            }}
+          >
+            <option value="auto">
+              {tr2(`आफैं मिलाउने (अहिले ${eng.level})`, `Auto (now ${eng.level})`)}
+            </option>
+            {([1, 2, 3, 4] as EnglishLevel[]).map((l) => (
+              <option key={l} value={l}>
+                {l} — {tr(LEVEL_NAMES[l])}
+              </option>
+            ))}
+          </select>
+        </label>
+        {eng.auto && eng.level < 4 && (
+          <span
+            className="h-1.5 w-14 overflow-hidden rounded bg-slate-700"
+            title={tr2(`अर्को लेभलसम्मको प्रगति`, `Progress to the next level`)}
+          >
+            <span
+              className="block h-full bg-emerald-500"
+              style={{
+                width: `${Math.max(0, (eng.points / LEVEL_UP_POINTS) * 100)}%`,
+              }}
+            />
+          </span>
+        )}
+        <div className="flex-1" />
+        <label
+          className="flex cursor-pointer items-center gap-1"
+          title={tr(
+            'Editor मा नयाँ कोड लेखेर रोकिएपछि Guru ले हरेक नयाँ लाइन र शब्द आफैं बुझाउँछ · After you write new code and pause, Guru explains every new line and word by itself',
+          )}
+        >
+          <input
+            type="checkbox"
+            checked={typeExplain}
+            onChange={(e) => {
+              setTypeExplain(e.target.checked);
+              try {
+                localStorage.setItem(
+                  TYPE_EXPLAIN_KEY,
+                  e.target.checked ? 'on' : 'off',
+                );
+              } catch {
+                // ignore
+              }
+            }}
+          />
+          {tr('✍️ लेख्दा बुझाऊ · Explain as I type')}
+        </label>
+      </div>
+      {levelNote && (
+        <div
+          aria-live="polite"
+          className="mx-3 mt-2 rounded-md bg-emerald-900/50 px-3 py-1.5 text-xs text-emerald-200"
+        >
+          {levelNote}
+        </div>
+      )}
 
       {(account.waiting || (account.status && !account.status.loggedIn)) && (
         <div className="m-3 rounded-lg border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200">

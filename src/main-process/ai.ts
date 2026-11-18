@@ -27,13 +27,17 @@ How to answer:
 - Prefer short, concrete answers. Explain the "why", not only the "what".
 - Never invent APIs. If unsure, say so.
 - You have no tools in this app: answer from the code and output the learner shares.
-- Code breakdown rule: whenever your answer contains code of two or more lines (a fix, an example, or code inside an app plan), put a section titled "🔍 कोडको व्याख्या / Code breakdown" right after that code block. In it, give a table with columns "Line / Part | नेपाली | English" that says what each line or important keyword does, then one or two sentences on the logic flow (what runs first, what calls what, and why). Keep each cell short and beginner-friendly.
+- MANDATORY code explanation (never skip, even for one line): every time your answer shows code, or the learner shares or writes code, put a section titled "🔍 कोडको व्याख्या / Code breakdown" right after that code. It must contain:
+  1. A table "Line | Code | नेपाली | English" covering EVERY line in order (for code longer than 40 lines, group into small blocks but still name every important line).
+  2. "🔤 शब्द-शब्द / Word by word": each keyword, symbol and name that appears (for example \`void\`, \`main\`, \`(\`, \`)\`, \`{\`, \`}\`, \`;\`, \`=\`, \`print\`, \`return\`, \`class\`, \`final\`) with what it means and what it does, in very simple words. Do not repeat a word already explained earlier in this conversation unless asked.
+  3. "⚙️ कसरी चल्छ / How it runs": two or three sentences on the order things run in and why.
+  Use simple words a 12-year-old could follow.
 - The learner runs commands with buttons, not a terminal. When a command is needed, name the button in this app if one fits (for example "Chrome मा चलाऊ / Run in Chrome", "प्याकेजहरू ल्याऊ / Get packages", "APK बनाऊ / Build APK").`;
 
 const MODE_INSTRUCTIONS: Record<AiMode, string> = {
   chat: '',
   explain:
-    'Explain the code below for a beginner. Start with one or two sentences on what the whole file or selection does. Then give a line-by-line (or block-by-block for long code) table with columns: Line | Code | नेपाली | English. End with "के सिक्यौं / What we learned" as 2-3 bullet points.',
+    'Explain the code below for a beginner. Start with one or two sentences on what the whole file or selection does. Then follow the MANDATORY code explanation rule: a table covering every line (Line | Code | नेपाली | English), then word by word for every keyword and symbol, then how it runs. End with "के सिक्यौं / What we learned" as 2-3 bullet points.',
   fix: 'The learner ran their program and got the output below. Find the real cause of the error. Say which file and line, explain why it happened, and show the corrected code. Explain in Nepali, then English. If there is no error, say so and explain what the output means.',
   blueprint:
     'The learner wants to build the app described below. Do NOT write the full code. Produce a step-by-step roadmap: 1) what the app does, 2) screens/pages, 3) folder and file structure, 4) packages needed and why, 5) numbered build steps from zero, each small enough for one learning session. Bilingual (Nepali, then English). End by asking whether they approve the plan before coding starts.',
@@ -72,6 +76,15 @@ function fail(
   send(target, { requestId, type: 'error', message, kind });
 }
 
+// 📈 Progressive English: लेभल अनुसार Guru को English कति सजिलो हुने।
+// Progressive English: how simple Guru's English must be at each level.
+const ENGLISH_LEVELS: Record<1 | 2 | 3 | 4, string> = {
+  1: 'English level 1 (very basic, CEFR A1): in every English part use very short sentences (at most 8 words), only very common everyday words, and present tense. Example style: "This line shows text on the screen." No idioms or long words. When a technical word is needed, keep it and write its Nepali meaning in brackets the first time.',
+  2: 'English level 2 (easy, CEFR A2): in every English part use short sentences (at most 12 words) and common words. Use at most three new technical words per answer, each with a short Nepali meaning in brackets the first time.',
+  3: 'English level 3 (normal, CEFR B1): in every English part use clear, everyday English with normal programming terms. Explain only uncommon terms.',
+  4: 'English level 4 (technical, CEFR B2): in every English part use natural professional software-engineering English, like good documentation.',
+};
+
 /** इतिहास र नयाँ प्रश्नलाई एउटै prompt मा राख्ने — Fold the history and the new question into one prompt. */
 function buildPrompt(req: AiRequest): string {
   const history = req.messages.slice(0, -1);
@@ -99,6 +112,15 @@ function buildPrompt(req: AiRequest): string {
   } else if (req.answerLang === 'en') {
     parts.push(
       'Answer language: write the whole answer in simple English only. Do not add a Nepali section.',
+    );
+  }
+  const level = req.englishLevel ?? 1;
+  if (req.answerLang !== 'ne') {
+    parts.push(
+      ENGLISH_LEVELS[level] +
+        (level < 4
+          ? ' At the very end add "📚 नयाँ English शब्द / New English words": 2 to 4 useful English words from this answer, each as "word — नेपाली अर्थ — one tiny example sentence", chosen to be just a little above this level so the learner grows.'
+          : ''),
     );
   }
   return parts.join('\n\n---\n\n');
