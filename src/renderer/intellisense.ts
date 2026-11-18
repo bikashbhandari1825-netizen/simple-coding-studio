@@ -103,7 +103,8 @@ export function installIntellisense(): void {
     triggerCharacters: ['.', '('],
     async provideCompletionItems(model, position) {
       const file = pathOf(model);
-      if (!file) return { suggestions: [] };
+      // धेरै ठूलो फाइलमा हरेक अक्षरमा पूरा फाइल नपठाउने (ढिलो नहोस्) — skip huge files so typing never lags
+      if (!file || model.getValueLength() > 400_000) return { suggestions: [] };
       const word = model.getWordUntilPosition(position);
       const range = new monaco.Range(
         position.lineNumber,
@@ -222,7 +223,13 @@ export function installIntellisense(): void {
       const actions: monaco.languages.CodeAction[] = [];
       const file = pathOf(model);
       // Dart analysis server का तयारी fix — ready-made fixes from the Dart analysis server
-      if (file && model.getLanguageId() === 'dart') {
+      // उत्तर आउँदासम्म फाइल बदलियो भने पुरानो fix नलगाउने — never apply fixes computed for older text
+      const version = model.getVersionId();
+      if (
+        file &&
+        model.getLanguageId() === 'dart' &&
+        model.getValueLength() <= 400_000
+      ) {
         try {
           const diags: EditorDiagnostic[] = errors.map((m) => ({
             line: m.startLineNumber,
@@ -254,7 +261,7 @@ export function installIntellisense(): void {
               edit: {
                 edits: fx.edits.map((e) => ({
                   resource: model.uri,
-                  versionId: model.getVersionId(),
+                  versionId: version,
                   textEdit: {
                     range: new monaco.Range(
                       e.line,

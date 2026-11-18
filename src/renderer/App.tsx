@@ -416,6 +416,7 @@ export default function App() {
     else if (cmd === 'stop') void window.studio.stopRun();
     else if (cmd === 'back') nav.back();
     else if (cmd === 'forward') nav.forward();
+    else if (cmd === 'openFolder') void openFolder();
     else if (cmd === 'findFile') {
       if (project) setDialog('quickOpen');
     } else if (cmd === 'run' || cmd === 'runChrome') {

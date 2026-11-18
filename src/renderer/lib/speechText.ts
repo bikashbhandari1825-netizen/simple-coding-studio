@@ -109,7 +109,35 @@ export function polishNepali(text: string): string {
   return t;
 }
 
+/** Quiz/challenge/result JSON लाई बोल्न मिल्ने पाठमा — speak quiz, challenge and result cards as sentences. */
+function speakBlocks(markdown: string): string {
+  return markdown.replace(
+    /```(quiz|challenge|result)[^\n]*\n([\s\S]*?)```/g,
+    (all, kind: string, body: string) => {
+      try {
+        const d = JSON.parse(body.trim()) as Record<string, unknown>;
+        if (kind === 'quiz') {
+          const qs = (d.questions as { q: string; options: string[] }[]) ?? [];
+          return qs
+            .map(
+              (q, i) =>
+                `प्रश्न ${i + 1}. ${q.q}\n` +
+                q.options.map((o, j) => `${'ABCD'[j]}. ${o}`).join('\n'),
+            )
+            .join('\n');
+        }
+        if (kind === 'challenge')
+          return [d.title, d.taskNe, d.taskEn].filter(Boolean).join('\n');
+        return [d.tip_ne, d.tip_en].filter(Boolean).join('\n');
+      } catch {
+        return all;
+      }
+    },
+  );
+}
+
 export function markdownToSpeech(markdown: string): SpeakChunk[] {
+  markdown = speakBlocks(markdown);
   const sentences: string[] = [];
   // हरेक वाक्य आफ्नै विरामसहित; चिन्ह मात्र भए त्यसको नाम भन्ने — every sentence ends with its own stop,
   // and a sentence made only of symbols is spoken as the symbols' names.

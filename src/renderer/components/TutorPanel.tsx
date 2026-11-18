@@ -34,6 +34,24 @@ import {
 } from '../lib/voiceCommands';
 import { fixFirstError } from '../intellisense';
 
+import {
+  answerQuizByVoice,
+  ChallengeCard,
+  ProgressDialog,
+  QuizCard,
+  ResultCard,
+  splitBlocks,
+  type ChallengeData,
+} from './LearningCards';
+import {
+  learnFrom,
+  markActive,
+  setTodaysChallenge,
+  today,
+  todaysChallenge,
+  useProgress,
+} from '../lib/progress';
+
 const TYPE_EXPLAIN_KEY = 'studio.guruTypeExplain';
 const AUTO_SPEAK_KEY = 'studio.guruAutoSpeak';
 
@@ -47,11 +65,16 @@ interface ChatItem {
   error?: string;
   errorKind?: AiErrorKind;
   streaming?: boolean;
+  /** च्यालेन्ज जाँचको जवाफ — this answer checks today's challenge */
+  checksChallenge?: boolean;
+  challengeTitle?: string;
 }
 
 export interface TutorRequest {
   mode: AiMode;
   label: string;
+  checksChallenge?: boolean;
+  challengeTitle?: string;
   prompt: string;
   context?: AiContext;
 }
@@ -126,6 +149,11 @@ export function TutorPanel({
     },
     (shown, better) => {
       // 🎙️ छोटो आदेश भए काम गर्ने, पाठ नराख्ने — a short spoken command runs instead of becoming text.
+      // 🧠 खुला quiz भए "A / बी / दोस्रो" उत्तर हो — with a quiz open, "A / B / second" answers it
+      if (answerQuizByVoice(better)) {
+        setInput(voiceBase.current);
+        return;
+      }
       const cmd = parseVoiceCommand(better);
       if (cmd) {
         setInput(voiceBase.current);
@@ -151,10 +179,27 @@ export function TutorPanel({
   const autoSpeakRef = useRef(autoSpeak);
   autoSpeakRef.current = autoSpeak;
   const toSpeak = useRef(new Set<string>());
+  const learned = useRef(new Set<string>());
+  const [showProgress, setShowProgress] = useState(false);
+  const progress = useProgress();
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
     // सकिएको जवाफ आफैं बोल्ने — speak answers that just finished
+    // सकिएको जवाफबाट शब्द/कन्सेप्ट टिप्ने र आजको च्यालेन्ज सम्झने — learn from finished answers
+    for (const item of items) {
+      if (
+        item.role !== 'assistant' ||
+        item.streaming ||
+        !item.content ||
+        learned.current.has(item.id)
+      )
+        continue;
+      learned.current.add(item.id);
+      learnFrom(item.content);
+      const { challenge } = splitBlocks(item.content);
+      if (challenge && !todaysChallenge()) setTodaysChallenge(challenge);
+    }
     for (const id of toSpeak.current) {
       const item = items.find((i) => i.id === id);
       if (!item || item.streaming) continue;
@@ -167,20 +212,23 @@ export function TutorPanel({
 
   useEffect(() => {
     const off = window.studio.onAiEvent((event) => {
+      // Guru AI Fix जस्ता chat बाहिरका जवाफले chat फेरि नबनाओस् — streams without a chat item change nothing
       setItems((prev) =>
-        prev.map((item) => {
-          if (item.id !== event.requestId) return item;
-          if (event.type === 'text')
-            return { ...item, content: item.content + event.text };
-          if (event.type === 'error')
-            return {
-              ...item,
-              streaming: false,
-              error: event.message,
-              errorKind: event.kind,
-            };
-          return { ...item, streaming: false };
-        }),
+        !prev.some((i) => i.id === event.requestId)
+          ? prev
+          : prev.map((item) => {
+              if (item.id !== event.requestId) return item;
+              if (event.type === 'text')
+                return { ...item, content: item.content + event.text };
+              if (event.type === 'error')
+                return {
+                  ...item,
+                  streaming: false,
+                  error: event.message,
+                  errorKind: event.kind,
+                };
+              return { ...item, streaming: false };
+            }),
       );
       if (event.type === 'done' && autoSpeakRef.current)
         toSpeak.current.add(event.requestId);
@@ -216,9 +264,17 @@ export function TutorPanel({
       setItems((prev) => [
         ...prev,
         { id: newId(), role: 'user', content: req.prompt, label: req.label },
-        { id: requestId, role: 'assistant', content: '', streaming: true },
+        {
+          id: requestId,
+          role: 'assistant',
+          content: '',
+          streaming: true,
+          checksChallenge: req.checksChallenge,
+          challengeTitle: req.challengeTitle,
+        },
       ]);
       setBusyId(requestId);
+      markActive();
       // आफैं लेखेको प्रश्नबाट English लेभल मिलाउने — adapt the English level from what the learner typed.
       let level = eng.level;
       if (req.mode === 'chat') {
@@ -406,8 +462,63 @@ For each error: say which line, explain in simple words why it happened (what th
       mode: 'chat',
       label: tr('🧠 मलाई जाँच · Quiz me'),
       prompt:
-        'Quiz me on what you just explained. Ask exactly 2 short questions, numbered, in simple words (Nepali and English). Do not give the answers yet. Tell me to answer by pressing 🎤 and speaking, or by typing, and that you will then check my answers.',
+        'Quiz me on what you just explained (or, if nothing was explained yet, on very basic programming). Write one short encouraging line, then a fenced code block with the language tag quiz containing ONLY this JSON: {"topic": "...", "questions": [{"q": "question in simple Nepali written in Devanagari script, never romanized (English in brackets)", "options": ["...", "...", "..."], "answer": <index of the correct option, 0-based>, "why": "one short sentence explaining the right answer: Nepali in Devanagari, then English"}]}. Exactly 2 very easy multiple-choice questions with 3 options each. Do not reveal the answers outside the JSON.',
     });
+  };
+
+  // 🎯 आजको च्यालेन्ज: एक दिनमा एउटा, लेभल अनुसार — one small challenge a day, by level
+  const startChallenge = () => {
+    const cached = todaysChallenge();
+    if (cached) {
+      setItems((prev) => [
+        ...prev,
+        {
+          id: newId(),
+          role: 'assistant',
+          content: '```challenge\n' + JSON.stringify(cached) + '\n```',
+        },
+      ]);
+      return;
+    }
+    const kind = getContext().projectKind ?? 'flutter';
+    void ask({
+      mode: 'chat',
+      label: tr('🎯 आजको च्यालेन्ज · Today’s challenge'),
+      prompt: `Give me today's micro coding challenge for a total beginner (English level ${eng.level} of 4). Language: ${kind === 'python' ? 'Python' : kind === 'node' || kind === 'web' ? 'JavaScript' : 'Dart'}. It must take 5-10 minutes and teach one concept. Write one fun motivating line, then a fenced code block with the language tag challenge containing ONLY this JSON: {"title": "short fun title", "concept": "the concept it teaches", "taskNe": "the task in simple Nepali", "taskEn": "the task in simple English", "starter": "a few lines of starter code with a TODO comment"}.`,
+    });
+  };
+
+  const checkChallenge = (c: ChallengeData) => {
+    const ctx = getContext();
+    if (!ctx.code?.trim()) {
+      setLevelNote(
+        tr(
+          '✍️ पहिले editor मा फाइल खोलेर च्यालेन्जको कोड लेख्नुहोस्, अनि जाँच थिच्नुहोस् · First write your answer in a file in the editor, then press check',
+        ),
+      );
+      return;
+    }
+    void ask({
+      mode: 'fix',
+      checksChallenge: true,
+      challengeTitle: c.title,
+      label: tr('✅ मेरो च्यालेन्ज जाँच · Check my challenge'),
+      prompt: `Today's challenge: "${c.title}". Task: ${c.taskEn || c.taskNe}. Check whether my code below solves it. Be kind and simple. First write a fenced code block with the language tag result containing ONLY this JSON: {"pass": true or false, "tip_ne": "one sentence in Nepali", "tip_en": "one sentence in English"}. Then, if it is not solved yet, give one small hint (not the full answer).`,
+      context: { ...ctx, runOutput: undefined },
+    });
+  };
+
+  const copyStarter = (c: ChallengeData) => {
+    void navigator.clipboard
+      .writeText(c.starter ?? '')
+      .then(() =>
+        setLevelNote(
+          tr(
+            '📋 Starter code copy भयो — editor मा paste गर्नुहोस् · Starter code copied — paste it into the editor',
+          ),
+        ),
+      )
+      .catch(() => undefined);
   };
 
   commandRef.current = (cmd: VoiceCommand) => {
@@ -559,7 +670,30 @@ For each error: say which line, explain in simple words why it happened (what th
           />
           {tr('🔊 आफैं सुनाउ · Auto-speak')}
         </label>
+        <button
+          className="chip"
+          disabled={!!busyId}
+          title={tr(
+            'हरेक दिन एउटा सानो रमाइलो च्यालेन्ज · One small fun challenge every day',
+          )}
+          onClick={startChallenge}
+        >
+          🎯 {tr('च्यालेन्ज · Challenge')}
+          {progress.challenges.some((c) => c.done && c.day === today())
+            ? ' ✅'
+            : ''}
+        </button>
+        <button
+          className="chip"
+          title={tr('मेरो प्रगति: अंक, streak, शब्द, कन्सेप्ट · My progress')}
+          onClick={() => setShowProgress(true)}
+        >
+          📊 🔥{progress.streak} ⭐{progress.points}
+        </button>
       </div>
+      {showProgress && (
+        <ProgressDialog onClose={() => setShowProgress(false)} />
+      )}
       {levelNote && (
         <div
           aria-live="polite"
@@ -621,11 +755,35 @@ For each error: say which line, explain in simple words why it happened (what th
               className="rounded-2xl rounded-tl-md border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)] backdrop-blur"
             >
               {item.content ? (
-                <Markdown
-                  text={item.content}
-                  showCodeTools={!item.streaming}
-                  onExplainCode={busyId ? undefined : explainCodeBlock}
-                />
+                (() => {
+                  const b = splitBlocks(item.content, item.streaming);
+                  return (
+                    <>
+                      {b.markdown && (
+                        <Markdown
+                          text={b.markdown}
+                          showCodeTools={!item.streaming}
+                          onExplainCode={busyId ? undefined : explainCodeBlock}
+                        />
+                      )}
+                      {b.quiz && <QuizCard data={b.quiz} />}
+                      {b.challenge && (
+                        <ChallengeCard
+                          data={b.challenge}
+                          onCheck={busyId ? undefined : checkChallenge}
+                          onStart={copyStarter}
+                        />
+                      )}
+                      {b.result && (
+                        <ResultCard
+                          data={b.result}
+                          forChallenge={Boolean(item.checksChallenge)}
+                          challengeTitle={item.challengeTitle}
+                        />
+                      )}
+                    </>
+                  );
+                })()
               ) : item.streaming ? (
                 <span className="animate-pulse text-slate-400">
                   {tr('Guru सोच्दैछ… · thinking…')}

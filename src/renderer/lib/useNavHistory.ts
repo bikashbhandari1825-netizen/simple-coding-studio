@@ -109,8 +109,14 @@ export function useNavHistory(
   // इतिहासबाट हटेका (मेटिएका) फाइल — drop a file that no longer exists
   const forget = useCallback((path: string) => {
     const before = stack.current.length;
+    const removedBefore = stack.current
+      .slice(0, index.current + 1)
+      .filter((l) => l.path === path).length;
     stack.current = stack.current.filter((l) => l.path !== path);
-    index.current = Math.min(index.current, stack.current.length - 1);
+    index.current = Math.max(
+      -1,
+      Math.min(index.current - removedBefore, stack.current.length - 1),
+    );
     if (stack.current.length !== before) sync();
   }, []);
 

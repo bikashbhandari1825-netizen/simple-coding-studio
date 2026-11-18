@@ -12,7 +12,8 @@ export type VoiceCommand =
   | 'quiz'
   | 'back'
   | 'forward'
-  | 'findFile';
+  | 'findFile'
+  | 'openFolder';
 
 const RULES: [VoiceCommand, RegExp][] = [
   [
@@ -40,6 +41,11 @@ const RULES: [VoiceCommand, RegExp][] = [
   ['back', /^(go back|back|पछाडि( जाऊ| जाउ)?|ब्याक( जाऊ)?)$/],
   ['forward', /^(go forward|forward|अगाडि( जाऊ| जाउ)?|फरवार्ड)$/],
   ['findFile', /^(find file|open file|फाइल खोज|फाइल खोल)$/],
+  // "फोल्डर खोल" लाई speech ले कहिलेकाहीँ "थोपार्ने ठाउँ खोल" सुन्छ — speech sometimes hears "folder" oddly
+  [
+    'openFolder',
+    /^((open|ओपन) (a |the )?(folder|project|फोल्डर)|(फोल्डर|फोल्डरहरू|प्रोजेक्ट|project|folder|थोपार्ने ठाउँ)( नयाँ)? (खोल|खोल्नु|खोल्ने|ओपन)( गर)?)$/,
+  ],
 ];
 
 /** आदेश भए त्यो, नभए null — the command, or null when it is ordinary speech. */
@@ -68,4 +74,5 @@ export const COMMAND_LABELS: Record<VoiceCommand, string> = {
   back: '← पछाडि · Going back',
   forward: '→ अगाडि · Going forward',
   findFile: '🔍 फाइल खोज · Find file',
+  openFolder: '📁 फोल्डर खोल्दै · Opening a folder',
 };

@@ -12,10 +12,13 @@ export function Modal({
   title,
   children,
   onClose,
+  wide = false,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
+  /** चौडा dialog (प्रगति ड्यासबोर्ड) — a wider dialog */
+  wide?: boolean;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -30,7 +33,7 @@ export function Modal({
       <div
         role="dialog"
         aria-label={title}
-        className="glass-pop w-full max-w-md rounded-2xl p-5"
+        className={`glass-pop max-h-[90vh] w-full overflow-auto rounded-2xl p-5 ${wide ? 'max-w-3xl' : 'max-w-md'}`}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <h2 className="mb-4 text-lg font-semibold text-slate-100">{title}</h2>
