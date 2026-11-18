@@ -804,6 +804,21 @@ function SpeakerBar({
   ];
   return (
     <div className="mt-2 flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-700/70 pt-2">
+      {hasNepali && (
+        <select
+          aria-label="Nepali voice"
+          className="mr-auto rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-[11px] text-slate-300"
+          title={tr('नेपाली कुन आवाजमा सुन्ने · Which voice reads Nepali')}
+          value={speaker.engine}
+          onChange={(e) => {
+            speaker.stop();
+            speaker.setEngine(e.target.value as 'google' | 'microsoft');
+          }}
+        >
+          <option value="google">🇳🇵 Google नेपाली</option>
+          <option value="microsoft">🇳🇵 Microsoft हेमकला</option>
+        </select>
+      )}
       {options
         .filter((o) => o.show)
         .map((o) => {

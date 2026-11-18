@@ -1,4 +1,4 @@
-import { app, ipcMain, type WebContents } from 'electron';
+import { app, ipcMain, net, type WebContents } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
@@ -67,12 +67,72 @@ function pick(lang, gender) {
   for (const p of prefs) { const v = same.find((x) => x.name.includes(p) && !x.localService); if (v) return v; }
   return same.find((v) => !v.localService && /Natural/i.test(v.name)) || same.find((v) => !v.localService) || null;
 }
-let current = null; // { id, chunks, i, rate, gender }
-function next() {
-  const job = current;
-  if (!job) return;
-  if (job.i >= job.chunks.length) { post({ type: 'end', id: job.id }); current = null; return; }
-  const c = job.chunks[job.i];
+let current = null; // { id, chunks, i, rate, gender, engine, googleFailed }
+// लुकेको window मा <audio> लोड हुँदैन, त्यसैले Web Audio (डाउनलोड → decode → बजाउने) प्रयोग गर्ने।
+// Hidden windows defer <audio> loading, so play through Web Audio (download → decode → play) instead.
+let actx = null;
+let source = null;
+let pulseTimer = 0;
+function audioCtx() { if (!actx) actx = new AudioContext(); if (actx.state === 'suspended') actx.resume(); return actx; }
+function stopAudio() { clearInterval(pulseTimer); if (source) { source.onended = null; try { source.stop(); } catch (e) {} source = null; } }
+function stopAll() { speechSynthesis.cancel(); stopAudio(); }
+// Google को नेपाली आवाजले एकपटकमा करिब २०० अक्षर मात्र लिन्छ: वाक्य/अल्पविराम/खाली ठाउँमा टुक्र्याउने।
+// Google's Nepali voice takes about 200 characters at a time: split at sentence, comma or space boundaries.
+function pieces(text) {
+  const out = []; let rest = text.trim();
+  while (rest.length > 180) {
+    let cut = -1;
+    for (const re of [/[।.!?]\\s/g, /[,;:]\\s/g, /\\s/g]) {
+      let m; re.lastIndex = 0;
+      while ((m = re.exec(rest)) && m.index < 180) cut = m.index + 1;
+      if (cut > 40) break;
+    }
+    if (cut <= 0) cut = 180;
+    out.push(rest.slice(0, cut).trim()); rest = rest.slice(cut).trim();
+  }
+  if (rest) out.push(rest);
+  return out;
+}
+const ttsUrl = (q) => base + '/tts?q=' + encodeURIComponent(q);
+// 🇳🇵 Google (Translate जस्तै) नेपाली आवाज; नचले हेमकलामा — Google's Nepali voice (as in Translate); Hemkala if it fails.
+function load(q) {
+  return fetch(ttsUrl(q)).then((r) => { if (!r.ok) throw new Error('tts ' + r.status); return r.arrayBuffer(); })
+    .then((b) => audioCtx().decodeAudioData(b));
+}
+function playGoogle(job, c) {
+  const parts = pieces(c.text);
+  let k = 0, announced = false;
+  // अर्को टुक्रा पहिल्यै ल्याउने ताकि बीचमा रोकिँदैन — fetch the next piece ahead so there is no gap.
+  const pending = parts.map(() => null);
+  const get = (n) => { if (n < parts.length && !pending[n]) pending[n] = load(parts[n]); return pending[n]; };
+  const fail = () => {
+    if (current !== job) return;
+    // इन्टरनेट/Google नचले बाँकी नेपाली हेमकलामा — without Google, read the rest of the Nepali with Hemkala.
+    stopAudio(); job.googleFailed = true;
+    speakSynth(job, { text: parts.slice(k).join(' '), lang: 'ne-NP' });
+  };
+  const playPart = () => {
+    if (current !== job) return;
+    if (k >= parts.length) { stopAudio(); job.i++; next(); return; }
+    get(k + 1);
+    get(k).then((buf) => {
+      if (current !== job) return;
+      const ctx = audioCtx();
+      const s = ctx.createBufferSource();
+      s.buffer = buf;
+      s.playbackRate.value = job.rate;
+      s.connect(ctx.destination);
+      s.onended = () => { if (current !== job || source !== s) return; clearInterval(pulseTimer); source = null; k++; playPart(); };
+      source = s;
+      s.start();
+      if (!announced) { announced = true; post({ type: 'chunk', id: job.id, index: job.i, voice: 'Google नेपाली (ne-NP)' }); }
+      clearInterval(pulseTimer);
+      pulseTimer = setInterval(() => { if (current === job) post({ type: 'word', id: job.id, index: job.i, charIndex: 0 }); }, 200);
+    }).catch(fail);
+  };
+  playPart();
+}
+function speakSynth(job, c) {
   const u = new SpeechSynthesisUtterance(c.text);
   u.lang = c.lang;
   const v = pick(c.lang, job.gender);
@@ -91,28 +151,60 @@ function next() {
   u.onerror = (e) => { if (current !== job) return; if (e.error === 'interrupted' || e.error === 'canceled') return; post({ type: 'error', id: job.id, error: e.error }); job.i++; next(); };
   speechSynthesis.speak(u);
 }
+function next() {
+  const job = current;
+  if (!job) return;
+  if (job.i >= job.chunks.length) { post({ type: 'end', id: job.id }); current = null; return; }
+  const c = job.chunks[job.i];
+  if (c.lang === 'ne-NP' && job.engine === 'google' && !job.googleFailed) playGoogle(job, c);
+  else speakSynth(job, c);
+}
 const es = new EventSource(base + '/cmd');
 let failures = 0;
 es.onopen = () => { failures = 0; };
-es.onerror = () => { if (++failures >= 3) { speechSynthesis.cancel(); window.close(); } };
+es.onerror = () => { if (++failures >= 3) { stopAll(); window.close(); } };
 es.onmessage = (m) => {
   const c = JSON.parse(m.data);
   if (c.type === 'speak') {
-    const old = current; current = null; speechSynthesis.cancel();
+    const old = current; current = null; stopAll();
     if (old) post({ type: 'end', id: old.id, stopped: true });
-    const job = { id: c.id, chunks: c.chunks, i: 0, rate: c.rate || 1, gender: c.gender || 'female' };
+    const job = { id: c.id, chunks: c.chunks, i: 0, rate: c.rate || 1, gender: c.gender || 'female', engine: c.engine === 'microsoft' ? 'microsoft' : 'google', googleFailed: false };
     current = job;
     voicesReady().then((ok) => {
       if (current !== job) return;
-      if (!ok && job.chunks.some((x) => x.lang === 'ne-NP')) post({ type: 'error', id: job.id, error: 'no-nepali-voice' });
-      post({ type: 'start', id: job.id, voice: (pick('ne-NP', job.gender) || {}).name || '' });
+      if (!ok && job.engine !== 'google' && job.chunks.some((x) => x.lang === 'ne-NP')) post({ type: 'error', id: job.id, error: 'no-nepali-voice' });
+      post({ type: 'start', id: job.id, voice: job.engine === 'google' ? 'Google नेपाली (ne-NP)' : (pick('ne-NP', job.gender) || {}).name || '' });
       next();
     });
   }
-  if (c.type === 'stop') { const old = current; current = null; speechSynthesis.cancel(); if (old) post({ type: 'end', id: old.id, stopped: true }); }
+  if (c.type === 'stop') { const old = current; current = null; stopAll(); if (old) post({ type: 'end', id: old.id, stopped: true }); }
 };
 post({ type: 'ready' });
 </script></body></html>`;
+
+// 🇳🇵 Google Translate को नेपाली आवाज (ne): मान्छेले बोलेजस्तो प्राकृतिक लवज। केवल Guru को व्याख्याको पाठ जान्छ।
+// Google Translate's Nepali voice (ne), a natural human-like accent. Only the text of Guru's explanation is sent.
+const ttsCache = new Map<string, Buffer>();
+async function googleTts(text: string): Promise<Buffer> {
+  const q = text.trim().slice(0, 200);
+  if (!q) throw new Error('empty');
+  const hit = ttsCache.get(q);
+  if (hit) return hit;
+  const url =
+    'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=ne&q=' +
+    encodeURIComponent(q);
+  const r = await net.fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0' },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!r.ok || !/audio/.test(r.headers.get('content-type') ?? ''))
+    throw new Error('tts ' + r.status);
+  const mp3 = Buffer.from(await r.arrayBuffer());
+  if (ttsCache.size > 300)
+    ttsCache.delete(ttsCache.keys().next().value as string);
+  ttsCache.set(q, mp3);
+  return mp3;
+}
 
 function ensureServer(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -134,6 +226,18 @@ function ensureServer(): Promise<number> {
           'cache-control': 'no-store',
         });
         res.end(PAGE(token));
+      } else if (sub.startsWith('/tts?')) {
+        const q = new URLSearchParams(sub.slice(5)).get('q') ?? '';
+        void googleTts(q)
+          .then((mp3) => {
+            res.writeHead(200, {
+              'content-type': 'audio/mpeg',
+              'content-length': mp3.length,
+              'cache-control': 'no-store',
+            });
+            res.end(mp3);
+          })
+          .catch(() => res.writeHead(502).end());
       } else if (sub === '/cmd') {
         res.writeHead(200, {
           'content-type': 'text/event-stream',
@@ -198,6 +302,10 @@ async function ensureBrowser(): Promise<void> {
         '--window-size=360,120',
         // क्लिक बिना पनि बोल्न दिने — allow speech without a click inside the hidden window.
         '--autoplay-policy=no-user-gesture-required',
+        // लुकेको window लाई "पृष्ठभूमि" भनेर ढिलो/बन्द नगर्ने — do not throttle or suspend the hidden window.
+        '--disable-background-media-suspend',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
       ],
       { windowsHide: true },
     );
@@ -233,7 +341,14 @@ export function registerSpeakerHandlers(): void {
   });
   ipcMain.handle(
     'speaker:speak',
-    async (e, id: unknown, chunks: unknown, rate: unknown, gender: unknown) => {
+    async (
+      e,
+      id: unknown,
+      chunks: unknown,
+      rate: unknown,
+      gender: unknown,
+      engine: unknown,
+    ) => {
       target = e.sender;
       if (typeof id !== 'string' || !Array.isArray(chunks))
         throw new Error('Invalid request');
@@ -252,6 +367,7 @@ export function registerSpeakerHandlers(): void {
         chunks: clean,
         rate: typeof rate === 'number' && rate >= 0.5 && rate <= 2 ? rate : 1,
         gender: gender === 'male' ? 'male' : 'female',
+        engine: engine === 'microsoft' ? 'microsoft' : 'google',
       });
     },
   );

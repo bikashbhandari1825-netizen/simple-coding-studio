@@ -21,6 +21,16 @@ export function useSpeaker() {
       return 'female';
     }
   });
+  // 🇳🇵 नेपाली आवाज: Google (Translate जस्तै प्राकृतिक) वा Microsoft हेमकला — Nepali voice engine.
+  const [engine, setEngineState] = useState<'google' | 'microsoft'>(() => {
+    try {
+      return localStorage.getItem('studio.speakerNeEngine') === 'microsoft'
+        ? 'microsoft'
+        : 'google';
+    } catch {
+      return 'google';
+    }
+  });
   const currentId = useRef<string | null>(null);
 
   // App खुलेपछि लुकेको Edge पहिल्यै तयार राख्ने — get the hidden Edge window ready early.
@@ -96,7 +106,7 @@ export function useSpeaker() {
       setLoadingId(id);
       setSpeakingId(null);
       try {
-        await window.studio.speak(id, chunks, 1, gender);
+        await window.studio.speak(id, chunks, 1, gender, engine);
       } catch (err) {
         currentId.current = null;
         setLoadingId(null);
@@ -105,7 +115,7 @@ export function useSpeaker() {
         );
       }
     },
-    [available, gender, stop],
+    [available, gender, engine, stop],
   );
 
   return {
@@ -119,6 +129,15 @@ export function useSpeaker() {
       setGenderState(g);
       try {
         localStorage.setItem('studio.speakerVoice', g);
+      } catch {
+        // ignore
+      }
+    },
+    engine,
+    setEngine: (e: 'google' | 'microsoft') => {
+      setEngineState(e);
+      try {
+        localStorage.setItem('studio.speakerNeEngine', e);
       } catch {
         // ignore
       }

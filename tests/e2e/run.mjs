@@ -369,7 +369,8 @@ function tests(fixture) {
           90000,
         );
         const chunks = r.filter((e) => e.startsWith('chunk'));
-        if (!chunks[0]?.includes('हेमकला') && !chunks[0]?.includes('Hemkala'))
+        // पूर्वनिर्धारित Google नेपाली; Google नचले हेमकला — Google Nepali by default, Hemkala if Google fails.
+        if (!/Google नेपाली|हेमकला|Hemkala/.test(chunks[0] ?? ''))
           throw new Error('Nepali chunk voice: ' + chunks[0]);
         if (
           !/Natural/.test(chunks[1] ?? '') ||

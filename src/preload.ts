@@ -69,8 +69,8 @@ const api: StudioApi = {
 
   speakerAvailable: () => ipcRenderer.invoke('speaker:available'),
   speakerPrepare: () => ipcRenderer.invoke('speaker:prepare'),
-  speak: (id, chunks, rate, gender) =>
-    ipcRenderer.invoke('speaker:speak', id, chunks, rate, gender),
+  speak: (id, chunks, rate, gender, engine) =>
+    ipcRenderer.invoke('speaker:speak', id, chunks, rate, gender, engine),
   stopSpeaking: () => ipcRenderer.invoke('speaker:stop'),
   onSpeakerEvent: (listener) =>
     subscribe<SpeakerEvent>('speaker:event', listener),

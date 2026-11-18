@@ -211,6 +211,8 @@ export interface StudioApi {
     chunks: SpeakChunk[],
     rate: number,
     gender: 'female' | 'male',
+    /** नेपाली आवाज: Google (Translate जस्तै, पूर्वनिर्धारित) वा Microsoft हेमकला — Nepali voice engine. */
+    engine?: 'google' | 'microsoft',
   ): Promise<void>;
   stopSpeaking(): Promise<void>;
   onSpeakerEvent(listener: (event: SpeakerEvent) => void): () => void;
