@@ -170,7 +170,7 @@ export function LoginCard({
   }
   if (s.loggedIn) {
     return (
-      <div className="rounded-lg border border-emerald-700 bg-emerald-950/40 p-3 text-sm text-emerald-200">
+      <div className="rounded-2xl border border-emerald-400/25 bg-emerald-500/10 p-3 text-sm text-emerald-200 shadow-[0_0_24px_-10px_rgba(52,211,153,0.6)] backdrop-blur">
         {tr('✅ Claude Code जोडिएको छ · Connected')}
         <div className="mt-1 text-xs text-emerald-100/80">{planLabel(s)}</div>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -193,7 +193,7 @@ export function LoginCard({
   return (
     <div>
       <button
-        className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#d97757] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#e08a6c]"
+        className="btn-claude flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-white"
         onClick={() => void account.login(false)}
       >
         🔗 Login with Claude
@@ -236,7 +236,7 @@ export function AccountMenu({
   if (!s.loggedIn) {
     return (
       <button
-        className={`rounded-lg bg-[#d97757] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#e08a6c] disabled:opacity-60 ${account.waiting ? 'animate-pulse' : ''}`}
+        className={`btn-claude rounded-xl px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-60 ${account.waiting ? 'animate-pulse' : ''}`}
         disabled={!s.installed}
         title={
           s.installed
@@ -253,14 +253,14 @@ export function AccountMenu({
   return (
     <div ref={ref} className="relative">
       <button
-        className={`chip max-w-[220px] truncate ${account.waiting ? 'animate-pulse' : ''}`}
+        className={`chip max-w-[170px] shrink-0 truncate ${account.waiting ? 'animate-pulse' : ''}`}
         title={`Switch Account / Logout${s.email ? ` — ${s.email}` : ''}`}
         onClick={() => setOpen((o) => !o)}
       >
         {compact ? '👤 ▾' : `👤 ${s.email ?? 'Account'} ▾`}
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-72 rounded-lg border border-slate-600 bg-slate-800 p-2 shadow-xl">
+        <div className="glass-pop absolute right-0 z-30 mt-2 w-72 rounded-2xl p-2">
           {account.waiting ? (
             <WaitingBox account={account} />
           ) : (
@@ -269,7 +269,7 @@ export function AccountMenu({
                 {planLabel(s)}
               </p>
               <button
-                className="w-full rounded px-2 py-1.5 text-left text-sm text-slate-100 hover:bg-slate-700"
+                className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-slate-100 hover:bg-white/10 hover:shadow-[0_0_14px_-6px_rgba(56,189,248,0.7)]"
                 onClick={() => {
                   setOpen(false);
                   void account.login(true);
@@ -278,7 +278,7 @@ export function AccountMenu({
                 {tr('🔄 Switch Account · अर्को email')}
               </button>
               <button
-                className="w-full rounded px-2 py-1.5 text-left text-sm text-rose-300 hover:bg-slate-700"
+                className="w-full rounded-lg px-2 py-1.5 text-left text-sm text-rose-300 hover:bg-rose-500/10 hover:shadow-[0_0_14px_-6px_rgba(244,63,94,0.7)]"
                 onClick={() => {
                   setOpen(false);
                   void account.logout();

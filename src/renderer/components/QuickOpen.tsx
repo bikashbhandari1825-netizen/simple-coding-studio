@@ -74,13 +74,13 @@ export function QuickOpen({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-center bg-black/50 pt-20"
+      className="fixed inset-0 z-50 flex justify-center bg-black/50 pt-20 backdrop-blur-sm"
       onMouseDown={onClose}
     >
       <div
         role="dialog"
         aria-label="Quick open"
-        className="h-fit w-full max-w-2xl overflow-hidden rounded-xl border border-slate-600 bg-slate-800 shadow-2xl"
+        className="glass-pop h-fit w-full max-w-2xl overflow-hidden rounded-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <input

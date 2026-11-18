@@ -362,7 +362,7 @@ For each error: say which line, explain in simple words why it happened (what th
   const hasCode = Boolean(getContext().code);
 
   return (
-    <div className="flex h-full flex-col bg-slate-900">
+    <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-slate-700 px-3 py-2">
         <span className="text-lg">🧑‍🏫</span>
         <div className="flex-1">
@@ -396,7 +396,7 @@ For each error: say which line, explain in simple words why it happened (what th
           {tr('📈 English:')}
           <select
             aria-label="English level"
-            className="rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-slate-100"
+            className="glass-input rounded-lg px-1 py-0.5 text-slate-100"
             value={eng.auto ? 'auto' : String(eng.level)}
             onChange={(e) => {
               const v = e.target.value;
@@ -511,14 +511,14 @@ For each error: say which line, explain in simple words why it happened (what th
           item.role === 'user' ? (
             <div
               key={item.id}
-              className="ml-6 rounded-lg bg-sky-900/60 px-3 py-2 text-sm whitespace-pre-wrap text-sky-50"
+              className="ml-6 rounded-2xl rounded-tr-md border border-sky-300/20 bg-gradient-to-br from-sky-600/35 to-violet-600/35 px-3 py-2 text-sm whitespace-pre-wrap text-sky-50 shadow-[0_8px_24px_-12px_rgba(99,102,241,0.8)]"
             >
               {item.label ?? item.content}
             </div>
           ) : (
             <div
               key={item.id}
-              className="rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-2 text-sm text-slate-100"
+              className="rounded-2xl rounded-tl-md border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)] backdrop-blur"
             >
               {item.content ? (
                 <Markdown
@@ -554,7 +554,7 @@ For each error: say which line, explain in simple words why it happened (what th
         <div ref={endRef} />
       </div>
 
-      <div className="border-t border-slate-700 p-3">
+      <div className="border-t border-white/10 bg-slate-950/30 p-3">
         <div className="mb-2 flex flex-wrap gap-1.5">
           <button
             className="chip"
@@ -692,10 +692,10 @@ For each error: say which line, explain in simple words why it happened (what th
         <div className="flex gap-2">
           <div className="flex flex-col gap-1">
             <button
-              className={`rounded-lg px-2.5 py-1.5 text-base ${
+              className={`rounded-xl px-2.5 py-1.5 text-base ${
                 listening
-                  ? 'bg-rose-600 text-white shadow-[0_0_14px_rgba(244,63,94,0.7)]'
-                  : 'border border-slate-600 text-slate-200 hover:bg-slate-700'
+                  ? 'mic-live bg-gradient-to-br from-rose-500 to-fuchsia-600 text-white'
+                  : 'border border-white/15 bg-white/5 text-slate-200 hover:border-sky-400/60 hover:bg-white/10 hover:shadow-[0_0_18px_-4px_rgba(56,189,248,0.7)]'
               } disabled:opacity-40`}
               title={tr('बोलेर लेख्नुहोस् (Voice) · Speak instead of typing')}
               onClick={voice.toggle}
@@ -714,7 +714,7 @@ For each error: say which line, explain in simple words why it happened (what th
               </span>
             </button>
             <button
-              className="rounded border border-slate-600 px-1 text-[10px] text-slate-300 hover:bg-slate-700"
+              className="rounded-md border border-white/15 bg-white/5 px-1 text-[10px] text-slate-300 hover:border-violet-400/60 hover:text-white"
               title={tr('बोल्ने भाषा · Speaking language')}
               disabled={voice.state.stage !== 'idle'}
               onClick={() =>
@@ -741,7 +741,7 @@ For each error: say which line, explain in simple words why it happened (what th
                 else sendTyped();
               }
             }}
-            className="min-w-0 flex-1 resize-none rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
+            className="glass-input min-w-0 flex-1 resize-none rounded-xl px-3 py-2 text-sm text-slate-100 outline-none"
           />
           {busyId ? (
             <button
@@ -752,7 +752,7 @@ For each error: say which line, explain in simple words why it happened (what th
             </button>
           ) : (
             <button
-              className="btn-primary"
+              className="btn-primary px-3.5 text-base"
               disabled={!input.trim()}
               onClick={sendTyped}
             >
@@ -807,7 +807,7 @@ function SpeakerBar({
       {hasNepali && (
         <select
           aria-label="Nepali voice"
-          className="mr-auto rounded border border-slate-600 bg-slate-800 px-1 py-0.5 text-[11px] text-slate-300"
+          className="glass-input mr-auto rounded-lg px-1 py-0.5 text-[11px] text-slate-300"
           title={tr('नेपाली कुन आवाजमा सुन्ने · Which voice reads Nepali')}
           value={speaker.engine}
           onChange={(e) => {

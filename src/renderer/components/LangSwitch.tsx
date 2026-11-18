@@ -18,7 +18,7 @@ export function LangSwitch({
     <div
       role="radiogroup"
       aria-label="Language"
-      className="flex overflow-hidden rounded-lg border border-slate-600"
+      className="flex gap-0.5 rounded-xl border border-white/10 bg-slate-950/50 p-0.5 backdrop-blur"
     >
       {OPTIONS.map((o) => (
         <button
@@ -27,10 +27,10 @@ export function LangSwitch({
           aria-checked={value === o.id}
           title={o.title}
           onClick={() => onChange(o.id)}
-          className={`px-2 py-1 text-xs font-semibold transition-colors ${
+          className={`rounded-lg px-2 py-1 text-xs font-semibold ${
             value === o.id
-              ? 'bg-sky-600 text-white'
-              : 'text-slate-300 hover:bg-slate-700'
+              ? 'bg-gradient-to-br from-sky-500 to-violet-600 text-white shadow-[0_0_14px_-2px_rgba(139,92,246,0.7)]'
+              : 'text-slate-300 hover:bg-white/10 hover:text-white'
           }`}
         >
           {o.label}

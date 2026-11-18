@@ -802,7 +802,7 @@ export default function App() {
   // ---------- Layout ----------
   return (
     <div
-      className="flex h-full flex-col bg-slate-900 text-slate-100"
+      className="studio-bg flex h-full flex-col text-slate-100"
       onDragOver={(e) => {
         e.preventDefault();
         setDragging(true);
@@ -813,17 +813,32 @@ export default function App() {
       onDrop={(e) => void onDrop(e)}
     >
       {/* Toolbar */}
-      <header className="flex items-center gap-2 border-b border-slate-700 bg-slate-950 px-3 py-2">
-        <span className="mr-1 font-bold text-sky-300">🎓 Studio</span>
-        <button className="btn-ghost" onClick={() => void openFolder()}>
-          {tr('📁 खोल · Open')}
+      <header className="glass-bar relative z-20 flex items-center gap-2 border-b px-3 py-2">
+        <span className="mr-1 flex items-center gap-1.5 select-none">
+          <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-sky-500 via-violet-500 to-fuchsia-500 text-sm shadow-[0_0_18px_rgba(167,139,250,0.55)]">
+            🎓
+          </span>
+          <span className="brand text-[15px]">Studio</span>
+        </span>
+        <button
+          className="btn-ghost"
+          title={tr('फोल्डर खोल · Open folder')}
+          onClick={() => void openFolder()}
+        >
+          <span aria-hidden="true">📁</span>{' '}
+          <span className="tb-label">{tr('खोल · Open')}</span>
         </button>
-        <button className="btn-ghost" onClick={() => setDialog('newFlutter')}>
-          {tr('✨ नयाँ एप · New app')}
+        <button
+          className="btn-ghost"
+          title={tr('नयाँ Flutter एप · New Flutter app')}
+          onClick={() => setDialog('newFlutter')}
+        >
+          <span aria-hidden="true">✨</span>{' '}
+          <span className="tb-label">{tr('नयाँ एप · New app')}</span>
         </button>
         {project && (
           <span
-            className="rounded bg-slate-800 px-2 py-0.5 text-xs text-slate-300"
+            className="max-w-44 shrink-0 truncate rounded-full border border-sky-400/25 bg-sky-400/10 px-2.5 py-0.5 text-xs whitespace-nowrap text-sky-100 shadow-[0_0_14px_-4px_rgba(56,189,248,0.6)]"
             title={project.rootPath}
           >
             {KIND_LABEL[project.kind]} · {project.name}
@@ -835,7 +850,8 @@ export default function App() {
             title="Ctrl+P"
             onClick={() => setDialog('quickOpen')}
           >
-            {tr('🔍 फाइल खोज · Find file')}
+            <span aria-hidden="true">🔍</span>{' '}
+            <span className="tb-label">{tr('फाइल खोज · Find file')}</span>
           </button>
         )}
         <div className="flex-1" />
@@ -849,7 +865,7 @@ export default function App() {
                   ? tr(`कमाण्ड · Command: ${currentPreset.commandLine}`)
                   : ''
               }
-              className="max-w-72 rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 text-sm text-slate-100 outline-none"
+              className="glass-input w-48 min-w-0 shrink rounded-xl px-2 py-1.5 text-sm text-slate-100 outline-none"
             >
               {presets.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -872,13 +888,14 @@ export default function App() {
             onClick={() => void saveActive()}
             title="Ctrl+S"
           >
-            {tr('💾 सेभ · Save')}
+            <span aria-hidden="true">💾</span>{' '}
+            <span className="tb-label">{tr('सेभ · Save')}</span>
           </button>
         )}
         <LangSwitch value={uiLang} onChange={changeLang} />
         <AccountMenu account={account} />
         <button
-          className="btn-ghost"
+          className="btn-ghost shrink-0"
           title="Settings"
           onClick={() => setDialog('settings')}
         >
@@ -890,7 +907,7 @@ export default function App() {
       <div className="flex min-h-0 flex-1">
         {project ? (
           <>
-            <aside className="w-64 shrink-0 border-r border-slate-700 bg-slate-900">
+            <aside className="glass-panel w-64 shrink-0 border-r">
               <FileTree
                 project={project}
                 version={treeVersion}
@@ -980,14 +997,14 @@ export default function App() {
           </main>
         )}
         <aside
-          className="relative shrink-0 border-l border-slate-700"
+          className="glass-panel relative shrink-0 border-l"
           style={{ width: guruWidth }}
         >
           <div
             role="separator"
             aria-orientation="vertical"
             title={tr('तानेर चौडाइ बदल्नुहोस् · Drag to resize')}
-            className="absolute top-0 -left-1 z-20 h-full w-2 cursor-col-resize hover:bg-sky-500/40"
+            className="absolute top-0 -left-1 z-20 h-full w-2 cursor-col-resize transition-colors hover:bg-gradient-to-b hover:from-sky-400/60 hover:via-violet-400/60 hover:to-fuchsia-400/60"
             onPointerDown={startGuruResize}
           />
           <TutorPanel
@@ -1015,7 +1032,7 @@ export default function App() {
       </div>
 
       {/* Status bar */}
-      <footer className="flex items-center gap-3 border-t border-slate-700 bg-slate-950 px-3 py-0.5 text-[11px] text-slate-400">
+      <footer className="glass-bar flex items-center gap-3 border-t px-3 py-0.5 text-[11px] text-slate-400">
         <span>
           {project
             ? project.rootPath

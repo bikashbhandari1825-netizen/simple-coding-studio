@@ -24,13 +24,13 @@ export function Modal({
   }, [onClose]);
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
       onMouseDown={onClose}
     >
       <div
         role="dialog"
         aria-label={title}
-        className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-800 p-5 shadow-2xl"
+        className="glass-pop w-full max-w-md rounded-2xl p-5"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <h2 className="mb-4 text-lg font-semibold text-slate-100">{title}</h2>
@@ -87,7 +87,7 @@ export function PromptDialog({
         placeholder={placeholder}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && void submit()}
-        className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-sky-500"
+        className="glass-input w-full rounded-xl px-3 py-2 text-slate-100 outline-none"
       />
       {error && <p className="mt-2 text-sm text-rose-400">{tr(error)}</p>}
       <div className="mt-4 flex justify-end gap-2">
@@ -148,7 +148,7 @@ export function SettingsDialog({
       <select
         value={settings.model}
         onChange={(e) => void changeModel(e.target.value as AiModelId)}
-        className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-sky-500"
+        className="glass-input w-full rounded-xl px-3 py-2 text-slate-100 outline-none"
       >
         {AI_MODELS.map((m) => (
           <option key={m.id} value={m.id}>
