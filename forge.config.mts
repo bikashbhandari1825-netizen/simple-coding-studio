@@ -13,12 +13,14 @@ const config: ForgeConfig = {
     asar: true,
     name: 'Simple Coding Studio',
     executableName: 'SimpleCodingStudio',
+    icon: './assets/icon',
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({
       name: 'SimpleCodingStudio',
       setupExe: 'SimpleCodingStudio-Setup.exe',
+      setupIcon: './assets/icon.ico',
     }),
     new MakerZIP({}, ['darwin']),
     new MakerRpm({}),
