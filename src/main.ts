@@ -7,6 +7,7 @@ import { registerRunnerHandlers, stopCurrentRun } from './main-process/runner';
 import { registerSettingsHandlers } from './main-process/settings';
 import {
   registerClaudeCodeHandlers,
+  stopAuthWatch,
   stopGuruChildren,
 } from './main-process/claudeCode';
 import {
@@ -162,6 +163,7 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   stopCurrentRun();
   stopGuruChildren();
+  stopAuthWatch();
   stopCloudDictation();
   stopDiagnostics();
   stopSpeaker();

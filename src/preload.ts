@@ -7,6 +7,7 @@ import {
   type IpcRendererEvent,
 } from 'electron';
 import type {
+  ClaudeStatus,
   AiEvent,
   DiagEvent,
   DictationEvent,
@@ -63,6 +64,8 @@ const api: StudioApi = {
   claudeLogin: (switchAccount) =>
     ipcRenderer.invoke('claude:login', switchAccount),
   claudeLogout: () => ipcRenderer.invoke('claude:logout'),
+  onClaudeStatus: (listener) =>
+    subscribe<ClaudeStatus>('claude:status', listener),
   openSoundSettings: () => ipcRenderer.invoke('system:openSoundSettings'),
 
   diagUpdate: (filePath, text, kind) =>

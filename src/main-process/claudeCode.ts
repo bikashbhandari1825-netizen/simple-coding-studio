@@ -1,4 +1,4 @@
-import { app, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -142,14 +142,79 @@ async function openLoginTerminal(switchAccount: boolean): Promise<void> {
     'echo.',
     `"${claude}" auth login --claudeai`,
     'echo.',
-    'echo   Done. You can close this window and go back to Simple Coding Studio.',
-    'echo   सकियो। यो window बन्द गरेर app मा फर्कनुहोस्।',
-    'pause >nul',
+    'echo   Done - going back to Simple Coding Studio...',
+    'echo   सकियो - app मा फर्कँदै...',
+    // आफैं बन्द हुने (कुनै key थिच्नु नपर्ने) — closes by itself, no key press needed
+    'timeout /t 2 /nobreak >nul',
   ];
   fs.mkdirSync(path.dirname(script), { recursive: true });
   fs.writeFileSync(script, lines.join('\r\n') + '\r\n', 'utf8');
-  const err = await shell.openPath(script);
-  if (err) throw new Error(err);
+  // आफ्नै console window मा चलाउने र बन्द हुनेबित्तिकै अवस्था पठाउने — own console window; report the moment it closes
+  const child = spawn('cmd.exe', ['/c', script], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: false,
+  });
+  child.on('error', () => undefined);
+  child.on('exit', () => void broadcastStatus());
+  child.unref();
+}
+
+// ---------------------------------------------------------------- ⚡ instant sign-in detection
+// Browser मा Authorize थिच्नेबित्तिकै Claude Code आफैंले token आफ्नो credentials फाइलमा राख्छ। हामी token
+// छुँदैनौं; त्यो फाइल बदलिएको मात्र हेरेर तुरुन्तै नयाँ अवस्था app मा पठाउँछौं (३ सेकेन्ड पर्खाइ बिना)।
+// When "Authorize" is pressed, Claude Code itself stores the token in its credentials file. We never read the
+// token; we only watch for that file changing and push the new sign-in state to the app right away.
+let lastPushed = '';
+let pushing: Promise<void> | null = null;
+async function broadcastStatus(): Promise<void> {
+  if (pushing) return pushing;
+  pushing = (async () => {
+    try {
+      const s = await getClaudeStatus();
+      const key = JSON.stringify(s);
+      if (key === lastPushed) return;
+      lastPushed = key;
+      for (const w of BrowserWindow.getAllWindows())
+        if (!w.isDestroyed()) w.webContents.send('claude:status', s);
+    } finally {
+      pushing = null;
+    }
+  })();
+  return pushing;
+}
+
+function configDir(): string {
+  return (
+    process.env.CLAUDE_CONFIG_DIR || path.join(app.getPath('home'), '.claude')
+  );
+}
+
+let watcher: fs.FSWatcher | null = null;
+let debounce: ReturnType<typeof setTimeout> | undefined;
+function watchCredentials(): void {
+  if (watcher) return;
+  try {
+    const dir = configDir();
+    fs.mkdirSync(dir, { recursive: true });
+    watcher = fs.watch(dir, (_event, name) => {
+      if (name && !/credentials|\.claude\.json$/i.test(String(name))) return;
+      clearTimeout(debounce);
+      if (process.env.STUDIO_AUTH_DEBUG)
+        console.log(`[auth] change seen: ${String(name)} at ${Date.now()}`);
+      debounce = setTimeout(() => void broadcastStatus(), 150);
+    });
+    watcher.on('error', () => {
+      watcher = null;
+    });
+  } catch {
+    // फाइल हेर्न नमिले पनि पुरानो polling काम गर्छ — polling still works if watching is not possible
+  }
+}
+
+export function stopAuthWatch(): void {
+  watcher?.close();
+  watcher = null;
 }
 
 let guruChildren = new Set<ChildProcess>();
@@ -174,12 +239,19 @@ export function killTree(child: ChildProcess): void {
 }
 
 export function registerClaudeCodeHandlers(): void {
-  ipcMain.handle('claude:status', () => getClaudeStatus());
+  watchCredentials();
+  ipcMain.handle('claude:status', async () => {
+    const s = await getClaudeStatus();
+    lastPushed = JSON.stringify(s);
+    return s;
+  });
   ipcMain.handle('claude:login', (_e, switchAccount: unknown) =>
     openLoginTerminal(switchAccount === true),
   );
   ipcMain.handle('claude:logout', async () => {
     await run(['auth', 'logout']);
-    return getClaudeStatus();
+    const s = await getClaudeStatus();
+    lastPushed = JSON.stringify(s);
+    return s;
   });
 }

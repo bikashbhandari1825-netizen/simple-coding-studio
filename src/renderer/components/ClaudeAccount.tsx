@@ -37,10 +37,20 @@ export function useClaudeAccount(): ClaudeAccount {
     // Browser बाट फर्केपछि अवस्था फेरि पढ्ने — re-check when the user comes back from the browser.
     const onFocus = () => void refresh();
     window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
+    // ⚡ Authorize थिच्नेबित्तिकै main बाट आउने नयाँ अवस्था — instant updates pushed from the main process
+    const off = window.studio.onClaudeStatus((s) => {
+      setStatus(s);
+      const before = baseline.current;
+      if (s.loggedIn && (!before?.loggedIn || s.email !== before.email))
+        setWaiting(false);
+    });
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      off();
+    };
   }, [refresh]);
 
-  // Terminal मा login सकिएसम्म हरेक ३ सेकेन्डमा जाँच्ने — poll every 3 s until the terminal login finishes.
+  // जोगाउको लागि मात्र: तुरुन्तै सूचना नआए हरेक १.५ सेकेन्डमा जाँच्ने — fallback only: poll every 1.5 s.
   useEffect(() => {
     if (!waiting) return;
     const id = setInterval(async () => {
@@ -48,7 +58,7 @@ export function useClaudeAccount(): ClaudeAccount {
       const before = baseline.current;
       if (s.loggedIn && (!before?.loggedIn || s.email !== before.email))
         setWaiting(false);
-    }, 3000);
+    }, 1500);
     const stop = setTimeout(() => setWaiting(false), LOGIN_WAIT_MS);
     return () => {
       clearInterval(id);
