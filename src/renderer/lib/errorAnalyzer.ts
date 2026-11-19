@@ -15,6 +15,17 @@ export interface FixTip {
   file?: string;
   line?: number;
   column?: number;
+  /** उही कारणका कति error यसमा मिसिए — how many errors of the same cause were grouped here */
+  count?: number;
+  /** 🔧 एकै क्लिकमा ठीक गर्ने काम — a one-click fix */
+  fix?: QuickRunFix;
+}
+
+/** एकै क्लिकको fix (main process ले सुरक्षित कमाण्ड बनाउँछ) — a one-click fix; main builds the safe command. */
+export interface QuickRunFix {
+  action: 'pubGet' | 'pubAdd' | 'pubUpgrade';
+  pkg?: string;
+  label: string;
 }
 
 /** Python package नाम import नाम भन्दा फरक हुने अवस्था — Import names whose pip package name differs. */
@@ -137,8 +148,101 @@ function dartTip(message: string): string {
   return 'Dart ले यो लाइनमा गल्ती देख्यो। सन्देश ध्यानले पढ्नुहोस्, वा "Guru लाई विस्तारमा सोध" थिच्नुहोस्। — Dart found a problem on this line; read the message or ask Guru for details.';
 }
 
-/** Terminal output बाट error हरू चिन्ने — Find errors in run output. */
+const missingPkg = (message: string) =>
+  message.match(/package:([a-z0-9_]+)\//)?.[1] ??
+  message.match(/Couldn't resolve the package '([a-z0-9_]+)'/)?.[1];
+
+/**
+ * Terminal output बाट error हरू चिन्ने, एउटै कारणका धेरै error (जस्तै ४४ वटा) लाई एउटै card मा समेट्ने,
+ * र सकिने ठाउँमा एकै क्लिकको fix जोड्ने।
+ * Find errors in run output, fold many errors with one cause (e.g. 44 of them) into one card, and attach
+ * a one-click fix where possible.
+ */
 export function analyzeOutput(output: string): FixTip[] {
+  const raw = analyzeRaw(output);
+  const out: FixTip[] = [];
+  const byPkg = new Map<string, FixTip>();
+  // कुन फाइलमा कुन package छुटेको — which files import a missing package
+  const pkgByFile = new Map<string, FixTip>();
+  const isMissing = (m: string) =>
+    /Target of URI doesn't exist|Couldn't resolve the package|Not found: 'package:|Error when reading 'package:|doesn't exist/i.test(
+      m,
+    );
+  // package नहुँदा त्यसैका कारण आउने अरू error (Method not found, Undefined name…) — follow-on errors
+  const isFollowOn = (m: string) =>
+    /Method not found|Getter not found|Setter not found|Undefined name|isn't defined|isn't a type|Type '[^']+' not found|Couldn't find constructor|The (method|getter|function) '[^']+' isn't defined/i.test(
+      m,
+    );
+  for (const t of raw) {
+    const pkg = isMissing(t.message) ? missingPkg(t.message) : undefined;
+    if (pkg) {
+      const g = byPkg.get(pkg);
+      if (g) {
+        g.count = (g.count ?? 1) + 1;
+        continue;
+      }
+      const tip: FixTip = {
+        ...t,
+        count: 1,
+        fix: {
+          action: 'pubAdd',
+          pkg,
+          label: `📦 "${pkg}" थपेर प्याकेज ल्याऊ · Add "${pkg}" and get packages`,
+        },
+      };
+      byPkg.set(pkg, tip);
+      if (t.file) pkgByFile.set(t.file, tip);
+      out.push(tip);
+      continue;
+    }
+    // यो फाइलमा package छुटेको छ भने यो error त्यसैको परिणाम हो — a consequence of that missing package
+    const owner = t.file ? pkgByFile.get(t.file) : undefined;
+    if (owner && isFollowOn(t.message)) {
+      owner.count = (owner.count ?? 1) + 1;
+      continue;
+    }
+    if (
+      t.kind === 'pub get' &&
+      /doesn't match any versions|version solving failed/i.test(
+        t.message + output,
+      )
+    )
+      t.fix = {
+        action: 'pubUpgrade',
+        label:
+          '🔧 प्याकेज version मिलाऊ · Fix package versions (pub upgrade --major-versions)',
+      };
+    out.push(t);
+  }
+  // प्याकेज नतानिएको सामान्य अवस्था — packages simply not fetched yet
+  if (
+    !out.some((t) => t.fix) &&
+    /Run "?(flutter|dart) pub get"?|package_config\.json|pub get has not been run|Could not find a file named "pubspec\.lock"/i.test(
+      output,
+    )
+  ) {
+    out.unshift({
+      id: 'pub-get-needed',
+      kind: 'pub get',
+      message: 'Packages are not fetched yet',
+      tip: 'Project का प्याकेजहरू अझै तानिएका छैनन्। तलको बटन थिच्नुहोस्। — The project packages have not been fetched yet; press the button below.',
+      fix: {
+        action: 'pubGet',
+        label: '📦 प्याकेजहरू ल्याऊ · Get packages (pub get)',
+      },
+    });
+  }
+  // धेरै error लाई कारणअनुसार गन्ने: सबैभन्दा धेरै भएको पहिले — causes with the most errors first
+  // सबै error गनेर मात्र card छान्ने (बढीमा ६) — count every error first, then show at most 6 cards
+  return out
+    .sort(
+      (a, b) =>
+        (b.fix ? 1 : 0) - (a.fix ? 1 : 0) || (b.count ?? 1) - (a.count ?? 1),
+    )
+    .slice(0, 6);
+}
+
+function analyzeRaw(output: string): FixTip[] {
   const tips: FixTip[] = [];
   const seen = new Set<string>();
   const add = (tip: Omit<FixTip, 'id'>) => {
@@ -350,5 +454,5 @@ export function analyzeOutput(output: string): FixTip[] {
   // Error भएका ठाउँ (फाइल/लाइन) भएकालाई पहिले देखाउने — show tips with a location first.
   return tips
     .sort((a, b) => Number(Boolean(b.file)) - Number(Boolean(a.file)))
-    .slice(0, 5);
+    .slice(0, 400);
 }

@@ -51,6 +51,34 @@ function preset(
   };
 }
 
+// यी चलाउनुअघि प्याकेज चाहिन्छ — these need the project's packages first
+const NEEDS_PACKAGES: Record<string, 'flutter' | 'dart'> = {
+  'flutter-web': 'flutter',
+  'flutter-windows': 'flutter',
+  'flutter-apk': 'flutter',
+  'flutter-build-web': 'flutter',
+  'dart-run': 'dart',
+};
+
+/**
+ * 📦 प्याकेज छुटेका वा पुराना छन्? (.dart_tool/package_config.json नभए, वा pubspec त्यसपछि बदलिए)
+ * Are the packages missing or out of date? (no package_config.json, or pubspec changed after it)
+ */
+async function packagesStale(root: string): Promise<boolean> {
+  try {
+    const cfg = (
+      await fs.stat(path.join(root, '.dart_tool', 'package_config.json'))
+    ).mtimeMs;
+    for (const name of ['pubspec.yaml', 'pubspec.lock']) {
+      const st = await fs.stat(path.join(root, name)).catch(() => null);
+      if (st && st.mtimeMs > cfg + 1000) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 async function resolvePresets(
   rootPath: string,
   currentFile: string | null,
@@ -199,17 +227,26 @@ function startProcess(
   target: WebContents,
   cwd: string,
   p: ResolvedPreset,
+  /** अघि चलाउने कमाण्ड, जस्तै "flutter pub get && " — a command to run first */
+  prefix = '',
 ): { runId: number; done: Promise<number | null> } {
   if (current) {
     current.stopped = true;
     killTree(current.child);
   }
   const runId = nextRunId++;
-  send(target, { runId, type: 'start', commandLine: p.commandLine });
+  send(target, { runId, type: 'start', commandLine: prefix + p.commandLine });
+  if (prefix)
+    send(target, {
+      runId,
+      type: 'output',
+      stream: 'stdout',
+      data: '📦 प्याकेजहरू छुटेका/पुराना छन् — पहिले आफैं ल्याउँदैछु (pub get), अनि चलाउँछु। · Packages are missing or out of date — fetching them first, then running.\n',
+    });
 
   // .bat/.cmd (flutter, npm) चलाउन Windows मा shell चाहिन्छ। Args हामीले नै बनाएका र quote गरिएका हुन्।
   // Windows needs a shell for .bat/.cmd tools; every arg here is ours and quoted.
-  const child = spawn([p.command, ...p.args.map(quote)].join(' '), {
+  const child = spawn(prefix + [p.command, ...p.args.map(quote)].join(' '), {
     cwd,
     shell: true,
     windowsHide: true,
@@ -290,7 +327,42 @@ export function registerRunnerHandlers(): void {
         if (err) throw new Error(err);
         return 0;
       }
-      return startProcess(e.sender, assertInsideProject(rootPath), p).runId;
+      const root = assertInsideProject(rootPath);
+      const tool = NEEDS_PACKAGES[p.id];
+      const prefix =
+        tool && (await packagesStale(root)) ? `${tool} pub get && ` : '';
+      return startProcess(e.sender, root, p, prefix).runId;
+    },
+  );
+
+  // 🔧 एकै क्लिकको fix: UI ले काम र package नाम मात्र पठाउँछ — one-click fixes: the UI sends only an action and a name
+  ipcMain.handle(
+    'run:fix',
+    async (e, rootPath: string, action: unknown, pkg: unknown) => {
+      const root = assertInsideProject(rootPath);
+      const kind = await detectProjectKind(root);
+      if (kind !== 'flutter' && kind !== 'dart')
+        throw new Error(
+          'यो Flutter/Dart project होइन — Not a Flutter/Dart project.',
+        );
+      const tool = kind;
+      let args: string[];
+      if (action === 'pubGet') args = ['pub', 'get'];
+      else if (action === 'pubUpgrade')
+        args = ['pub', 'upgrade', '--major-versions'];
+      else if (action === 'pubAdd') {
+        if (typeof pkg !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(pkg))
+          throw new Error('Invalid package name');
+        // pubspec मा पहिल्यै छ भने थप्नु पर्दैन, ल्याए पुग्छ — already listed? then just fetch
+        const spec = await fs
+          .readFile(path.join(root, 'pubspec.yaml'), 'utf8')
+          .catch(() => '');
+        args = new RegExp(`^\\s+${pkg}\\s*:`, 'm').test(spec)
+          ? ['pub', 'get']
+          : ['pub', 'add', pkg];
+      } else throw new Error('Unknown fix');
+      const p = preset('quick-fix', 'छिटो सुधार', 'Quick fix', tool, args);
+      return startProcess(e.sender, root, p).runId;
     },
   );
 

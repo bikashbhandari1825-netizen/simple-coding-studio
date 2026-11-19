@@ -21,6 +21,8 @@ interface Props {
   tips?: FixTip[];
   onOpenTip?: (tip: FixTip) => void;
   onAskTip?: (tip: FixTip) => void;
+  /** 🔧 एकै क्लिकको fix — run a tip's one-click fix */
+  onFixTip?: (tip: FixTip) => void;
 }
 
 const COLORS: Record<ConsoleLine['kind'], string> = {
@@ -43,6 +45,7 @@ export function ConsolePanel({
   tips = [],
   onOpenTip,
   onAskTip,
+  onFixTip,
 }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -126,6 +129,7 @@ export function ConsolePanel({
             tip={tip}
             onOpen={onOpenTip}
             onAsk={onAskTip}
+            onFix={running ? undefined : onFixTip}
           />
         ))}
         <div ref={endRef} />
@@ -139,10 +143,12 @@ function FixTipCard({
   tip,
   onOpen,
   onAsk,
+  onFix,
 }: {
   tip: FixTip;
   onOpen?: (t: FixTip) => void;
   onAsk?: (t: FixTip) => void;
+  onFix?: (t: FixTip) => void;
 }) {
   const where = tip.file
     ? `${tip.file}${tip.line ? ` : ${tr2(`लाइन ${tip.line}`, `line ${tip.line}`)}` : ''}${tip.column ? `, ${tr2(`कोलम ${tip.column}`, `col ${tip.column}`)}` : ''}`
@@ -159,6 +165,14 @@ function FixTipCard({
         <span className="rounded bg-rose-900/70 px-1.5 py-0.5 font-mono text-[11px] text-rose-200">
           {tip.kind}
         </span>
+        {(tip.count ?? 1) > 1 && (
+          <span
+            className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[11px] font-bold text-amber-100"
+            title={tr('एउटै कारणले आएका error हरू · Errors with this same cause')}
+          >
+            ×{tip.count} {tr('error, एउटै कारण · errors, one cause')}
+          </span>
+        )}
       </div>
       {where && (
         <button
@@ -177,6 +191,11 @@ function FixTipCard({
         💡 {tr(tip.tip)}
       </p>
       <div className="mt-2 flex flex-wrap gap-2">
+        {tip.fix && onFix && (
+          <button className="btn-run" onClick={() => onFix(tip)}>
+            {tr(tip.fix.label)}
+          </button>
+        )}
         {where && onOpen && (
           <button className="chip" onClick={() => onOpen(tip)}>
             {tr('📂 फाइल खोल · Open file')}

@@ -47,6 +47,8 @@ const api: StudioApi = {
     ipcRenderer.invoke('run:start', rootPath, presetId, currentFile),
   sendRunKey: (key) => ipcRenderer.invoke('run:key', key),
   stopRun: () => ipcRenderer.invoke('run:stop'),
+  runFix: (rootPath, action, pkg) =>
+    ipcRenderer.invoke('run:fix', rootPath, action, pkg),
   createFlutterProject: (name) =>
     ipcRenderer.invoke('project:createFlutter', name),
   onRunEvent: (listener) => subscribe<RunEvent>('run:event', listener),

@@ -176,6 +176,12 @@ export interface StudioApi {
   ): Promise<number>;
   sendRunKey(key: 'r' | 'R' | 'q'): Promise<void>;
   stopRun(): Promise<void>;
+  /** 🔧 एकै क्लिकको fix (pub get / pub add / pub upgrade) — returns the run id */
+  runFix(
+    rootPath: string,
+    action: 'pubGet' | 'pubAdd' | 'pubUpgrade',
+    pkg?: string,
+  ): Promise<number>;
   createFlutterProject(name: string): Promise<ProjectInfo | null>;
   onRunEvent(listener: (event: RunEvent) => void): () => void;
 

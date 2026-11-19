@@ -124,9 +124,10 @@ export function TutorPanel({
   const [levelNote, setLevelNote] = useState('');
   const [typeExplain, setTypeExplain] = useState(() => {
     try {
-      return localStorage.getItem(TYPE_EXPLAIN_KEY) !== 'off';
+      // नमागी नबोल्ने: पूर्वनिर्धारित बन्द — off unless the learner turns it on
+      return localStorage.getItem(TYPE_EXPLAIN_KEY) === 'on';
     } catch {
-      return true;
+      return false;
     }
   });
   const endRef = useRef<HTMLDivElement>(null);

@@ -155,6 +155,13 @@ export default function App() {
         pushLine(event.stream, stripAnsi(event.data));
       } else {
         setRunning((r) => (r?.runId === event.runId ? null : r));
+        // fix सफल भयो: पहिलेको Run आफैं फेरि — the fix worked: start the earlier Run again
+        const again = rerunAfter.current;
+        if (again && again.runId === event.runId) {
+          rerunAfter.current = null;
+          if (event.code === 0 && !event.stoppedByUser)
+            setTimeout(() => void runPresetRef.current(again.presetId), 300);
+        }
         // Run गल्तीसहित बन्द भयो: Guru लाई आफैं बुझाउन भन्ने (Auto खुला भए) — a failed run: let Guru explain it (if Auto is on).
         if (event.code !== 0 && !event.stoppedByUser)
           setRunFailedAt(Date.now());
@@ -386,6 +393,9 @@ export default function App() {
 
   // ---------- Run ----------
   const runSelected = (id = presetId) => runPreset(id);
+  const runPresetRef = useRef<(id: string) => Promise<void>>(
+    async () => undefined,
+  );
   const runPreset = async (id: string) => {
     if (!project || !id) return;
     const preset = presets.find((p) => p.id === id);
@@ -398,6 +408,8 @@ export default function App() {
       pushLine('error', errorText(err));
     }
   };
+
+  runPresetRef.current = runPreset;
 
   const createFlutter = async (name: string) => {
     if (!confirmDiscard()) return;
@@ -503,7 +515,7 @@ export default function App() {
     typeTimer.current = setTimeout(function check() {
       let on = true;
       try {
-        on = localStorage.getItem('studio.guruTypeExplain') !== 'off';
+        on = localStorage.getItem('studio.guruTypeExplain') === 'on';
       } catch {
         // ignore
       }
@@ -566,7 +578,7 @@ export default function App() {
           '🤖 🩺 Run असफल भयो — Guru ले कारण र उपाय बताउँछ · The run failed — Guru explains why and how to fix it',
         ),
         prompt:
-          'I pressed Run and my program failed. Read the output below. Explain each real error (dependency, syntax or type error) in simple words, say which file and line it is in, and show the exact fix (corrected code or the command/button to use).',
+          'I pressed Run and it failed. Read the output below. Many errors usually come from only 1-3 root causes: group them by cause (say how many errors each cause explains), most important first. For each cause give: ❓ why (one line, file and line) and ✅ the one-click fix (name the button shown on the Fix card, e.g. "Add package and get packages", or the exact corrected code). Keep it short. Do not list every error separately.',
         context: getContext(),
       });
     }, 600);
@@ -853,6 +865,24 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [tips, activePath, resolveTipPath, tabs.length]);
 
+  // 🔧 एकै क्लिकमा ठीक गर्ने, सफल भए उही Run फेरि आफैं — one-click fix, then the same Run again on success
+  const rerunAfter = useRef<{ runId: number; presetId: string } | null>(null);
+  const fixTip = async (tip: FixTip) => {
+    if (!project || !tip.fix) return;
+    try {
+      setConsoleOpen(true);
+      interactiveRef.current = false;
+      const runId = await window.studio.runFix(
+        project.rootPath,
+        tip.fix.action,
+        tip.fix.pkg,
+      );
+      rerunAfter.current = presetId ? { runId, presetId } : null;
+    } catch (err) {
+      showError(errorText(err));
+    }
+  };
+
   const askGuruAboutTip = (tip: FixTip) => {
     setPendingTutor({
       mode: 'fix',
@@ -1094,6 +1124,7 @@ export default function App() {
                     tips={tips}
                     onOpenTip={(tip) => void openTip(tip)}
                     onAskTip={askGuruAboutTip}
+                    onFixTip={(tip) => void fixTip(tip)}
                   />
                 </div>
               ) : (
