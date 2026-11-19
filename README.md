@@ -56,9 +56,9 @@ npm.cmd run make
 
 `flutter doctor` ले यो computer मा २ कमी देखायो — found two gaps on this computer:
 
-| कमी | असर | समाधान |
-|---|---|---|
-| Android license स्वीकार भएको छैन | "APK बनाऊ" चल्दैन | `flutter doctor --android-licenses` चलाएर सबैमा `y` |
+| कमी                              | असर                           | समाधान                                                       |
+| -------------------------------- | ----------------------------- | ------------------------------------------------------------ |
+| Android license स्वीकार भएको छैन   | "APK बनाऊ" चल्दैन               | `flutter doctor --android-licenses` चलाएर सबैमा `y`           |
 | Visual Studio मा C++ workload छैन | "Windows एपको रूपमा चलाऊ" चल्दैन | Visual Studio Installer → "Desktop development with C++" थप्ने |
 
 "Chrome मा चलाऊ" अहिले नै काम गर्छ — Running in Chrome works already.

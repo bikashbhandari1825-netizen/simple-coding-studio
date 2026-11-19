@@ -8,6 +8,7 @@ import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
 const config: ForgeConfig = {
+  outDir: process.env.FORGE_OUT_DIR || undefined,
   packagerConfig: {
     asar: true,
     name: 'Simple Coding Studio',

@@ -16,8 +16,7 @@ import { launchApp } from './driver.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(here, '..', '..');
 const exe = path.join(
-  projectRoot,
-  'out',
+  process.env.FORGE_OUT_DIR || path.join(projectRoot, 'out'),
   'Simple Coding Studio-win32-x64',
   'SimpleCodingStudio.exe',
 );
@@ -131,7 +130,7 @@ function tests(fixture) {
       run: async (p) => {
         const r = await p.eval(`(async () => {
           const pick = (l) => [...document.querySelectorAll('[role=radio]')].find((b) => b.innerText.trim() === l).click();
-          const head = () => [...document.querySelectorAll('header button')].map((b) => b.innerText).join(' ');
+          const head = () => [...document.querySelectorAll('header button')].map((b) => b.textContent).join(' ');
           pick('EN'); await __t.wait(250); const en = head();
           pick('ने'); await __t.wait(250); const ne = head();
           pick('ने+EN'); await __t.wait(250); const both = head();
@@ -394,12 +393,13 @@ function tests(fixture) {
             run: async (p) => {
               const r = await p.eval(
                 `(async () => {
+                await __t.until(() => ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 120000, 250);
                 const ta = document.querySelector('aside textarea');
                 Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, 'print() ले के गर्छ? एक वाक्य नेपाली, एक वाक्य English।');
                 ta.dispatchEvent(new Event('input', { bubbles: true }));
                 await __t.wait(200);
                 const before = document.querySelectorAll('aside .md-body').length;
-                [...document.querySelectorAll('aside button')].find((b) => b.innerText.trim() === '➤').click();
+                (await __t.until(() => [...document.querySelectorAll('aside button')].find((b) => b.innerText.trim() === '➤' && !b.disabled), 120000, 250)).click();
                 const t0 = performance.now();
                 await __t.until(() => document.querySelectorAll('aside .md-body').length > before && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 120000, 250);
                 const a = [...document.querySelectorAll('aside .md-body')].pop()?.innerText ?? '';
