@@ -14,6 +14,7 @@ import {
   detectProjectKind,
   registerProject,
 } from './fileSystem';
+import { dartEntry, prepareRun } from './runPrep';
 
 // UI ले कमाण्ड पठाउँदैन, preset को id मात्र पठाउँछ। कमाण्ड यहीँ बन्छ, त्यसैले UI बाट जुनसुकै कमाण्ड चलाउन मिल्दैन।
 // The UI sends only a preset id; the command is built here, so the UI can never run arbitrary commands.
@@ -134,8 +135,10 @@ async function resolvePresets(
     );
   } else if (kind === 'dart') {
     list.push(
+      // सही entry फाइल आफैं खोज्ने (bin/<name>.dart नभए पनि) — find the real entry file
       preset('dart-run', 'Dart project चलाऊ', 'Run Dart project', 'dart', [
         'run',
+        ...(await dartEntry(root, file).then((e) => (e ? [e] : []))),
       ]),
       preset('dart-pub-get', 'प्याकेजहरू ल्याऊ', 'Get packages', 'dart', [
         'pub',
@@ -229,6 +232,8 @@ function startProcess(
   p: ResolvedPreset,
   /** अघि चलाउने कमाण्ड, जस्तै "flutter pub get && " — a command to run first */
   prefix = '',
+  /** console मा पहिले देखाउने सूचना — notes shown first */
+  notes: string[] = [],
 ): { runId: number; done: Promise<number | null> } {
   if (current) {
     current.stopped = true;
@@ -236,12 +241,12 @@ function startProcess(
   }
   const runId = nextRunId++;
   send(target, { runId, type: 'start', commandLine: prefix + p.commandLine });
-  if (prefix)
+  if (notes.length)
     send(target, {
       runId,
       type: 'output',
       stream: 'stdout',
-      data: '📦 प्याकेजहरू छुटेका/पुराना छन् — पहिले आफैं ल्याउँदैछु (pub get), अनि चलाउँछु। · Packages are missing or out of date — fetching them first, then running.\n',
+      data: notes.join('\n') + '\n',
     });
 
   // .bat/.cmd (flutter, npm) चलाउन Windows मा shell चाहिन्छ। Args हामीले नै बनाएका र quote गरिएका हुन्।
@@ -329,9 +334,15 @@ export function registerRunnerHandlers(): void {
       }
       const root = assertInsideProject(rootPath);
       const tool = NEEDS_PACKAGES[p.id];
-      const prefix =
-        tool && (await packagesStale(root)) ? `${tool} pub get && ` : '';
-      return startProcess(e.sender, root, p, prefix).runId;
+      if (p.id === 'dart-run' && p.args.length < 2)
+        throw new Error(
+          'चलाउने Dart फाइल भेटिएन (main() भएको bin/*.dart वा lib/main.dart चाहिन्छ) — No Dart file with main() found (bin/*.dart or lib/main.dart).',
+        );
+      const prep = tool
+        ? await prepareRun(root, tool, p.id, await packagesStale(root))
+        : { steps: [], notes: [] };
+      const prefix = prep.steps.map((s) => `${s} && `).join('');
+      return startProcess(e.sender, root, p, prefix, prep.notes).runId;
     },
   );
 

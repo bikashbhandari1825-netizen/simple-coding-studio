@@ -166,7 +166,12 @@ export async function detectProjectKind(root: string): Promise<ProjectKind> {
     const pubspec = await fs
       .readFile(path.join(root, 'pubspec.yaml'), 'utf8')
       .catch(() => '');
-    return /^\s*flutter\s*:/m.test(pubspec) ? 'flutter' : 'dart';
+    if (/^\s*flutter\s*:/m.test(pubspec)) return 'flutter';
+    // pubspec अधुरो भए पनि कोडले Flutter प्रयोग गर्छ भने Flutter project — Flutter code with an incomplete pubspec
+    const main = await fs
+      .readFile(path.join(root, 'lib', 'main.dart'), 'utf8')
+      .catch(() => '');
+    return /['"]package:flutter\//.test(main) ? 'flutter' : 'dart';
   }
   if (await has('package.json')) return 'node';
   if ((await has('requirements.txt')) || (await has('main.py')))
