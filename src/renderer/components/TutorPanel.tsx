@@ -14,6 +14,8 @@ import {
 } from './ClaudeAccount';
 import { useVoiceInput } from '../voice/useVoiceInput';
 import { Markdown } from './Markdown';
+import { DiffDialog } from './Dialogs';
+import { firstCodeBlock, mergeSnippet } from '../lib/diff';
 import { getUiLang, tr, tr2 } from '../i18n';
 import { VoiceWave } from '../voice/VoiceWave';
 import { SpeakWave } from '../voice/SpeakWave';
@@ -91,6 +93,8 @@ interface Props {
   onJumpTo: (line: number, column: number) => void;
   /** 🎙️ App-स्तरका आवाज आदेश (Run, Save, ← →…) — app-level voice commands */
   onVoiceCommand?: (cmd: VoiceCommand) => void;
+  /** Guru ले दिएको सच्याइएको पूरा पाठ खुला फाइलमा लगाउने — put the reviewed text into the open file */
+  onApplyToFile?: (content: string) => void;
 }
 
 export interface EditorError {
@@ -115,6 +119,7 @@ export function TutorPanel({
   activeFile,
   onJumpTo,
   onVoiceCommand,
+  onApplyToFile,
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState('');
@@ -442,6 +447,129 @@ For each error: say which line, explain in simple words why it happened (what th
     }
   };
 
+  // ---------- 🔧 One-click fix, diff preview, quick actions ----------
+  const [applyView, setApplyView] = useState<{
+    fileName: string;
+    before: string;
+    after: string;
+    note: string;
+  } | null>(null);
+  const autoDiffRef = useRef(false);
+  const inputElRef = useRef<HTMLTextAreaElement>(null);
+
+  /** Guru को कोडलाई खुला फाइलसँग दाँजेर diff देखाउने — compare Guru's code with the open file and show the diff. */
+  const openApply = (code: string) => {
+    const ctx = getContext();
+    if (!ctx.fileName || ctx.code === undefined) {
+      setLevelNote(
+        tr('📂 पहिले editor मा फाइल खोल्नुहोस् · Open a file in the editor first'),
+      );
+      return;
+    }
+    const merged = mergeSnippet(ctx.code, code);
+    if (!merged) {
+      setLevelNote(
+        tr(
+          '🤔 यो कोड फाइलको कुन ठाउँमा राख्ने थाहा भएन — 📋 Copy गरेर राख्नुहोस् · I could not tell where this code goes — please Copy and paste it',
+        ),
+      );
+      return;
+    }
+    setApplyView({
+      fileName: ctx.fileName,
+      before: ctx.code,
+      after: merged.text,
+      note:
+        merged.mode === 'whole'
+          ? tr('पूरै फाइल बदलिन्छ · whole file replaced')
+          : tr('मिल्ने भाग मात्र बदलिन्छ · only the matching part is replaced'),
+    });
+  };
+
+  const summarizeFile = () => {
+    const ctx = getContext();
+    if (!ctx.code) return;
+    void ask({
+      mode: 'chat',
+      label: tr('📄 यो फाइल बुझाऊ · Summarize this file'),
+      prompt:
+        'Summarize this file in simple Nepali (Devanagari) only: at most 5 one-line bullets covering what it does and its main parts, then one last line starting "👉" with the single most important thing to learn from it. No English section, no code, no tables.',
+      context: { ...ctx, runOutput: undefined },
+    });
+  };
+
+  const fixAndApply = () => {
+    const ctx = getContext();
+    const list = editorErrors
+      .slice(0, 8)
+      .map(
+        (e) =>
+          `- line ${e.line}, column ${e.column} (${e.source}): ${e.message}`,
+      )
+      .join('\n');
+    if (!ctx.code || (!list && !ctx.runOutput)) {
+      setLevelNote(
+        tr(
+          '✅ अहिले कुनै गल्ती भेटिएन — पहिले Run गर्नुहोस् वा फाइल खोल्नुहोस् · No error found right now — run the app or open a file first',
+        ),
+      );
+      return;
+    }
+    autoDiffRef.current = true;
+    void ask({
+      mode: 'fix',
+      label: tr('🛠 एरर खोज र ठीक गर · Find and fix the error'),
+      prompt: `Find the real cause of the problem and fix it in ${ctx.fileName ?? 'this file'}.${
+        list
+          ? `
+Editor errors:
+${list}`
+          : ''
+      }
+Reply in exactly this format and nothing else:
+❓ one line: why it happened (simple Nepali, then simple English).
+✅ ONE fenced code block with the corrected code. If the file has fewer than 80 lines give the whole corrected file; otherwise give only the changed function or region plus one unchanged line above and below it.`,
+      context: { ...ctx, runOutput: list ? undefined : ctx.runOutput },
+    });
+  };
+
+  const newWidget = () => {
+    const text = input.trim();
+    const kind = getContext().projectKind;
+    if (!text || text.startsWith('नयाँ widget/route बनाऊ')) {
+      setInput('नयाँ widget/route बनाऊ: ');
+      setTimeout(() => {
+        const el = inputElRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(el.value.length, el.value.length);
+        }
+      }, 0);
+      return;
+    }
+    const what = text.replace(/^नयाँ widget\/route बनाऊ:?\s*/, '');
+    setInput('');
+    void ask({
+      mode: 'chat',
+      label: `🧩 नयाँ विजेट/रूट: ${what}`,
+      prompt: `Create this ${kind === 'flutter' || !kind ? 'Flutter widget, screen or route' : 'component'}: ${what}
+Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real, null-safe code block, 3) if it is a route/screen, the one line to register it (for example in routes or Navigator.push). At most 3 short bullets of notes, Nepali then English. No tables, no long explanation.`,
+      context: { projectKind: kind },
+    });
+  };
+
+  // "एरर खोज र ठीक गर" को जवाफ सकिनेबित्तिकै diff आफैं खोल्ने — open the diff as soon as the fix answer is complete.
+  useEffect(() => {
+    if (!autoDiffRef.current) return;
+    const last = items[items.length - 1];
+    if (!last || last.role !== 'assistant' || last.streaming) return;
+    autoDiffRef.current = false;
+    if (last.error || !last.content) return;
+    const block = firstCodeBlock(last.content);
+    if (block) openApply(block.code);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- openApply only reads the latest editor state
+  }, [items]);
+
   const startBlueprint = () => {
     const text = input.trim();
     if (!text) {
@@ -525,6 +653,7 @@ For each error: say which line, explain in simple words why it happened (what th
   commandRef.current = (cmd: VoiceCommand) => {
     setLevelNote(`🎙️ ${tr(COMMAND_LABELS[cmd])}`);
     if (cmd === 'explain') quick('explain');
+    else if (cmd === 'newWidget') newWidget();
     else if (cmd === 'quiz') startQuiz();
     else if (cmd === 'fixError') {
       // editor मा गल्ती भए Guru ले सिधै सच्याउँछ; नभए run को output हेरेर — fix in the editor, else from the run output
@@ -765,6 +894,7 @@ For each error: say which line, explain in simple words why it happened (what th
                           text={b.markdown}
                           showCodeTools={!item.streaming}
                           onExplainCode={busyId ? undefined : explainCodeBlock}
+                          onApplyCode={busyId ? undefined : openApply}
                         />
                       )}
                       {b.quiz && <QuizCard data={b.quiz} />}
@@ -987,6 +1117,7 @@ For each error: say which line, explain in simple words why it happened (what th
             </button>
           </div>
           <textarea
+            ref={inputElRef}
             value={input}
             rows={2}
             placeholder={tr2(
@@ -1020,7 +1151,42 @@ For each error: say which line, explain in simple words why it happened (what th
             </button>
           )}
         </div>
+        <div
+          className="mt-2 flex flex-wrap gap-1.5"
+          data-testid="quick-actions"
+        >
+          <button
+            className="chip"
+            disabled={!!busyId || !hasCode}
+            onClick={summarizeFile}
+          >
+            {tr('📄 यो फाइल बुझाऊ · Explain this file')}
+          </button>
+          <button
+            className="chip"
+            disabled={!!busyId || !hasCode}
+            onClick={fixAndApply}
+          >
+            {tr('🛠 एरर खोज र ठीक गर · Find & fix error')}
+          </button>
+          <button className="chip" disabled={!!busyId} onClick={newWidget}>
+            {tr('🧩 नयाँ विजेट/रूट बनाऊ · New widget/route')}
+          </button>
+        </div>
       </div>
+      {applyView && (
+        <DiffDialog
+          fileName={applyView.fileName}
+          before={applyView.before}
+          after={applyView.after}
+          note={applyView.note}
+          onClose={() => setApplyView(null)}
+          onApply={() => {
+            onApplyToFile?.(applyView.after);
+            setApplyView(null);
+          }}
+        />
+      )}
     </div>
   );
 }

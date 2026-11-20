@@ -45,6 +45,23 @@ export type RunEvent =
       stoppedByUser: boolean;
     };
 
+/** नयाँ Flutter एपको starter — starter for a new Flutter app */
+export type FlutterTemplateId = 'basic' | 'firebase' | 'map';
+
+/** Git/backup स्थिति — Git/backup status of the open project */
+export type GitStatusInfo =
+  | { isRepo: false }
+  | {
+      isRepo: true;
+      branch: string;
+      /** सेभ नगरिएका (commit नभएका) फाइल — files not committed yet */
+      changed: number;
+      /** GitHub मा पठाउन बाँकी commit — commits not pushed yet */
+      ahead: number;
+      behind: number;
+      hasRemote: boolean;
+    };
+
 export type AiMode = 'chat' | 'explain' | 'fix' | 'blueprint' | 'quickfix';
 
 export interface AiChatMessage {
@@ -182,7 +199,11 @@ export interface StudioApi {
     action: 'pubGet' | 'pubAdd' | 'pubUpgrade',
     pkg?: string,
   ): Promise<number>;
-  createFlutterProject(name: string): Promise<ProjectInfo | null>;
+  createFlutterProject(
+    name: string,
+    template?: FlutterTemplateId,
+  ): Promise<ProjectInfo | null>;
+  getGitStatus(rootPath: string): Promise<GitStatusInfo>;
   onRunEvent(listener: (event: RunEvent) => void): () => void;
 
   // AI tutor (Claude Code)

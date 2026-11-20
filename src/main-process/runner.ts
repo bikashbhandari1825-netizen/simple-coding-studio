@@ -8,7 +8,13 @@ import {
 import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { ProjectInfo, RunEvent, RunPreset } from '../shared/types';
+import type {
+  FlutterTemplateId,
+  ProjectInfo,
+  RunEvent,
+  RunPreset,
+} from '../shared/types';
+import { templateSpec, writeTemplateFiles } from './flutterTemplates';
 import {
   assertInsideProject,
   detectProjectKind,
@@ -386,8 +392,16 @@ export function registerRunnerHandlers(): void {
 
   ipcMain.handle(
     'project:createFlutter',
-    async (e, rawName: unknown): Promise<ProjectInfo | null> => {
+    async (
+      e,
+      rawName: unknown,
+      rawTemplate: unknown,
+    ): Promise<ProjectInfo | null> => {
       const name = typeof rawName === 'string' ? rawName.trim() : '';
+      const templateId: FlutterTemplateId =
+        rawTemplate === 'firebase' || rawTemplate === 'map'
+          ? rawTemplate
+          : 'basic';
       if (!/^[a-z][a-z0-9_]{0,63}$/.test(name)) {
         throw new Error(
           'नाम सानो अंग्रेजी अक्षर, अंक र _ मात्र हुनुपर्छ (जस्तै my_app) — Use lowercase letters, digits and _ (e.g. my_app).',
@@ -426,6 +440,23 @@ export function registerRunnerHandlers(): void {
         throw new Error(
           'Flutter project बनाउन सकिएन, console हेर्नुहोस् — flutter create failed; see the console.',
         );
+      // तयार starter: फाइल लेख्ने र packages थप्ने — apply the starter: write files, add packages
+      const spec = templateSpec(templateId, name);
+      if (spec) {
+        await writeTemplateFiles(target, spec);
+        const add = preset(
+          'flutter-pub-add-template',
+          'Starter का packages थप्दै',
+          'Adding starter packages',
+          'flutter',
+          ['pub', 'add', ...spec.packages],
+        );
+        const addCode = await startProcess(e.sender, target, add).done;
+        if (addCode !== 0)
+          throw new Error(
+            'Starter का packages थप्न सकिएन (इन्टरनेट?), console हेर्नुहोस् — adding packages failed; see the console.',
+          );
+      }
       return registerProject(target);
     },
   );

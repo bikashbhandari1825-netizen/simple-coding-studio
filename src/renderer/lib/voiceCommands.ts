@@ -13,9 +13,20 @@ export type VoiceCommand =
   | 'back'
   | 'forward'
   | 'findFile'
-  | 'openFolder';
+  | 'openFolder'
+  | 'newFlutter'
+  | 'newWidget';
 
 const RULES: [VoiceCommand, RegExp][] = [
+  // "नयाँ Flutter एप बनाऊ" — Flutter लाई speech ले "फ्लटर/फ्लुटर/flatter" सुन्न सक्छ
+  [
+    'newFlutter',
+    /^(?!.*(widget|विजेट|वीजेट|route|रूट|रुट|पेज|page|स्क्रिन|screen))((नयाँ|नया|new|create|make|बनाऊ|बनाउ).*(flutter|फ्लटर|फ्लुटर|फ्लाटर|flatter)|(flutter|फ्लटर|फ्लुटर|फ्लाटर|flatter).*(एप|app|प्रोजेक्ट|project).*(बनाऊ|बनाउ|नयाँ|new|create|make))/,
+  ],
+  [
+    'newWidget',
+    /(नयाँ|नया|new|create|make|बनाऊ|बनाउ).*(widget|विजेट|वीजेट|route|रूट|रुट|पेज|page|स्क्रिन|screen)|(widget|विजेट|route|रूट|page|पेज).*(बनाऊ|बनाउ|नयाँ|create|make)/,
+  ],
   [
     'runChrome',
     /(run|रन|चलाऊ|चलाउ|चलाउनु|खोल|ओपन|open).*(chrome|क्रोम)|(chrome|क्रोम).*(run|रन|चलाऊ|चलाउ|मा चलाऊ|मा खोल)/,
@@ -35,7 +46,7 @@ const RULES: [VoiceCommand, RegExp][] = [
   ['save', /^(save|save (it|file|the file)|सेभ( गर)?|सेव( गर)?|फाइल सेभ गर)$/],
   [
     'explain',
-    /^(explain|explain (this|it|the code|this code)|बुझाऊ|बुझाउ|यो बुझाऊ|(यो )?कोड बुझाऊ|एक्सप्लेन( गर)?)$/,
+    /^(explain|explain (this|it|the code|this code)|बुझाऊ|बुझाउ|यो बुझाऊ|(यो )?(कोड|फाइल) बुझाऊ|एक्सप्लेन( गर)?)$/,
   ],
   ['quiz', /(quiz|क्विज|मलाई जाँच|मेरो परीक्षा|test me)/],
   ['back', /^(go back|back|पछाडि( जाऊ| जाउ)?|ब्याक( जाऊ)?)$/],
@@ -75,4 +86,6 @@ export const COMMAND_LABELS: Record<VoiceCommand, string> = {
   forward: '→ अगाडि · Going forward',
   findFile: '🔍 फाइल खोज · Find file',
   openFolder: '📁 फोल्डर खोल्दै · Opening a folder',
+  newFlutter: '✨ नयाँ Flutter एप · New Flutter app',
+  newWidget: '🧩 नयाँ विजेट/रूट · New widget/route',
 };

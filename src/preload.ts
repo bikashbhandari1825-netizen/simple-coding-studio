@@ -50,8 +50,9 @@ const api: StudioApi = {
   stopRun: () => ipcRenderer.invoke('run:stop'),
   runFix: (rootPath, action, pkg) =>
     ipcRenderer.invoke('run:fix', rootPath, action, pkg),
-  createFlutterProject: (name) =>
-    ipcRenderer.invoke('project:createFlutter', name),
+  createFlutterProject: (name, template) =>
+    ipcRenderer.invoke('project:createFlutter', name, template),
+  getGitStatus: (rootPath) => ipcRenderer.invoke('project:gitStatus', rootPath),
   onRunEvent: (listener) => subscribe<RunEvent>('run:event', listener),
 
   getSettings: () => ipcRenderer.invoke('settings:get'),

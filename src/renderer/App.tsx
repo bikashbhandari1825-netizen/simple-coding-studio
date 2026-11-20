@@ -10,7 +10,11 @@ import type {
 } from '../shared/types';
 import { ConsolePanel, type ConsoleLine } from './components/ConsolePanel';
 import { AccountMenu, useClaudeAccount } from './components/ClaudeAccount';
-import { PromptDialog, SettingsDialog } from './components/Dialogs';
+import {
+  NewFlutterDialog,
+  PromptDialog,
+  SettingsDialog,
+} from './components/Dialogs';
 import { EditorArea, type OpenTab } from './components/EditorArea';
 import { FileTree } from './components/FileTree';
 import { TutorPanel, type TutorRequest } from './components/TutorPanel';
@@ -27,7 +31,11 @@ import {
 import { getUiLang, setUiLang, tr, tr2, type UiLang } from './i18n';
 import { LangSwitch } from './components/LangSwitch';
 import { analyzeOutput, type FixTip } from './lib/errorAnalyzer';
-import type { EditorDiagnostic } from '../shared/types';
+import type {
+  EditorDiagnostic,
+  FlutterTemplateId,
+  GitStatusInfo,
+} from '../shared/types';
 import { useNavHistory, type NavLoc } from './lib/useNavHistory';
 import { setNotifier, setOpenFiles } from './intellisense';
 import type { VoiceCommand } from './lib/voiceCommands';
@@ -88,6 +96,13 @@ export default function App() {
     null,
   );
   const [pendingTutor, setPendingTutor] = useState<TutorRequest | null>(null);
+  // 📊 Status bar: पछिल्लो सेभ, पछिल्लो Run, Git/backup — last save, last run and Git/backup
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [lastRun, setLastRun] = useState<{
+    state: 'ok' | 'fail' | 'stopped';
+    at: number;
+  } | null>(null);
+  const [git, setGit] = useState<GitStatusInfo>({ isRepo: false });
   const [dragging, setDragging] = useState(false);
 
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -155,6 +170,14 @@ export default function App() {
         pushLine(event.stream, stripAnsi(event.data));
       } else {
         setRunning((r) => (r?.runId === event.runId ? null : r));
+        setLastRun({
+          state: event.stoppedByUser
+            ? 'stopped'
+            : event.code === 0
+              ? 'ok'
+              : 'fail',
+          at: Date.now(),
+        });
         // fix सफल भयो: पहिलेको Run आफैं फेरि — the fix worked: start the earlier Run again
         const again = rerunAfter.current;
         if (again && again.runId === event.runId) {
@@ -179,6 +202,27 @@ export default function App() {
     });
     return () => off();
   }, [pushLine]);
+
+  // Git/backup स्थिति: project बदल्दा, सेभ/Run पछि र हरेक १५ सेकेन्डमा — refresh on project change, after save/run and every 15 s.
+  const rootPath = project?.rootPath ?? null;
+  useEffect(() => {
+    if (!rootPath) {
+      setGit({ isRepo: false });
+      return;
+    }
+    let alive = true;
+    const load = () =>
+      window.studio
+        .getGitStatus(rootPath)
+        .then((g) => alive && setGit(g))
+        .catch(() => alive && setGit({ isRepo: false }));
+    void load();
+    const timer = setInterval(() => void load(), 15_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [rootPath, lastSavedAt, lastRun]);
 
   // ---------- Project ----------
   const refreshPresets = useCallback(
@@ -311,6 +355,7 @@ export default function App() {
           t.path === tab.path ? { ...t, savedContent: tab.content } : t,
         ),
       );
+      setLastSavedAt(Date.now());
       showToast(tr(`💾 ${tab.name} सेभ भयो · Saved`));
       if (tab.name === 'pubspec.yaml' || tab.name === 'package.json')
         refreshPresets(project, activePath);
@@ -325,6 +370,7 @@ export default function App() {
       await window.studio.writeFile(tab.path, tab.content);
     }
     if (dirty.length) {
+      setLastSavedAt(Date.now());
       setTabs((prev) => prev.map((t) => ({ ...t, savedContent: t.content })));
     }
   }, [tabs]);
@@ -411,11 +457,11 @@ export default function App() {
 
   runPresetRef.current = runPreset;
 
-  const createFlutter = async (name: string) => {
+  const createFlutter = async (name: string, template: FlutterTemplateId) => {
     if (!confirmDiscard()) return;
     setConsoleOpen(true);
     interactiveRef.current = false;
-    const proj = await window.studio.createFlutterProject(name);
+    const proj = await window.studio.createFlutterProject(name, template);
     if (proj) {
       applyProject(proj);
       showToast(tr('✨ नयाँ Flutter एप तयार भयो! · New Flutter app created!'));
@@ -429,6 +475,7 @@ export default function App() {
     else if (cmd === 'back') nav.back();
     else if (cmd === 'forward') nav.forward();
     else if (cmd === 'openFolder') void openFolder();
+    else if (cmd === 'newFlutter') setDialog('newFlutter');
     else if (cmd === 'findFile') {
       if (project) setDialog('quickOpen');
     } else if (cmd === 'run' || cmd === 'runChrome') {
@@ -1188,6 +1235,20 @@ export default function App() {
                 : null
             }
             onVoiceCommand={handleVoiceCommand}
+            onApplyToFile={(content) => {
+              if (!activePath) return;
+              setTabs((prev) =>
+                prev.map((t) =>
+                  t.path === activePath ? { ...t, content } : t,
+                ),
+              );
+              showToast(
+                tr(
+                  '✅ फाइलमा लगाइयो — Ctrl+Z ले फर्काउँछ, Ctrl+S ले सेभ गर्छ · Applied — Ctrl+Z undoes, Ctrl+S saves',
+                ),
+              );
+              editorRef.current?.focus();
+            }}
             onJumpTo={(line, column) => {
               const editor = editorRef.current;
               if (!editor) return;
@@ -1199,19 +1260,92 @@ export default function App() {
         </aside>
       </div>
 
-      {/* Status bar */}
-      <footer className="glass-bar flex items-center gap-3 border-t px-3 py-0.5 text-[11px] text-slate-400">
-        <span>
+      {/* Status bar: project · save · run · Git/backup */}
+      <footer
+        data-testid="status-bar"
+        className="glass-bar flex items-center gap-3 overflow-hidden border-t px-3 py-0.5 text-[11px] whitespace-nowrap text-slate-400"
+      >
+        <span
+          className="max-w-56 truncate text-slate-200"
+          title={project?.rootPath ?? ''}
+        >
           {project
-            ? project.rootPath
+            ? `${KIND_LABEL[project.kind]} · ${project.name}`
             : tr('कुनै project खुलेको छैन · No project open')}
         </span>
-        <div className="flex-1" />
-        {dirtyCount > 0 && (
-          <span className="text-amber-400">
-            {tr(`● ${dirtyCount} सेभ बाँकी · unsaved`)}
-          </span>
+        {project && (
+          <>
+            <span
+              data-status="save"
+              className={dirtyCount > 0 ? 'text-amber-400' : undefined}
+            >
+              {dirtyCount > 0
+                ? tr(`● ${dirtyCount} सेभ बाँकी · unsaved`)
+                : lastSavedAt
+                  ? tr(
+                      `💾 सेभ भयो ${new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · saved`,
+                    )
+                  : tr('💾 सबै सेभ · all saved')}
+            </span>
+            <span
+              data-status="run"
+              className={
+                running
+                  ? 'text-sky-300'
+                  : lastRun?.state === 'fail'
+                    ? 'text-rose-400'
+                    : lastRun?.state === 'ok'
+                      ? 'text-emerald-400'
+                      : undefined
+              }
+            >
+              {running
+                ? tr('▶ चल्दैछ · running')
+                : lastRun?.state === 'ok'
+                  ? tr('✅ Run सफल · run OK')
+                  : lastRun?.state === 'fail'
+                    ? tr('❌ Run मा गल्ती · run failed')
+                    : lastRun?.state === 'stopped'
+                      ? tr('⏹ Run रोकियो · stopped')
+                      : tr('▶ Run गरिएको छैन · not run yet')}
+            </span>
+            <span
+              data-status="git"
+              title={
+                git.isRepo
+                  ? tr(
+                      'Git: commit नभएका फाइल र GitHub मा पठाउन बाँकी commit · uncommitted files and unpushed commits',
+                    )
+                  : ''
+              }
+              className={
+                git.isRepo &&
+                git.changed === 0 &&
+                git.ahead === 0 &&
+                git.hasRemote
+                  ? 'text-emerald-400'
+                  : git.isRepo
+                    ? 'text-amber-300'
+                    : undefined
+              }
+            >
+              {!git.isRepo
+                ? tr('☁️ Git छैन — backup छैन · no Git, no backup')
+                : `🌿 ${git.branch} · ` +
+                  (git.changed > 0
+                    ? tr(`● ${git.changed} बदलाव · changed`)
+                    : tr('✓ सफा · clean')) +
+                  (!git.hasRemote
+                    ? tr(' · ☁️ GitHub जोडिएको छैन · no remote')
+                    : git.ahead > 0
+                      ? tr(` · ⬆ ${git.ahead} पठाउन बाँकी · to push`)
+                      : git.changed === 0
+                        ? tr(' · ☁️ backup भयो · backed up')
+                        : '')}
+            </span>
+          </>
         )}
+        <div className="min-w-0 flex-1" />
         {activeTab &&
           activeErrors.path === activeTab.path &&
           activeErrors.list.length > 0 && (
@@ -1282,13 +1416,7 @@ export default function App() {
         />
       )}
       {dialog === 'newFlutter' && (
-        <PromptDialog
-          title={tr('✨ नयाँ Flutter एप · New Flutter app')}
-          hint={tr(
-            'नाम सानो अंग्रेजी अक्षरमा, खाली ठाउँको सट्टा _ (जस्तै nepali_quiz)। त्यसपछि project राख्ने फोल्डर छान्नुहोस्। — Lowercase name with _ ; then choose where to save it.',
-          )}
-          placeholder="my_first_app"
-          confirmLabel={tr('बनाऊ · Create')}
+        <NewFlutterDialog
           onClose={() => setDialog(null)}
           onSubmit={createFlutter}
         />

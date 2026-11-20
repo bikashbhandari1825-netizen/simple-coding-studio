@@ -18,6 +18,7 @@ import {
   registerDiagnosticsHandlers,
   stopDiagnostics,
 } from './main-process/diagnostics';
+import { registerGitStatusHandlers } from './main-process/gitStatus';
 import { registerSpeakerHandlers, stopSpeaker } from './main-process/speaker';
 
 // Windows installer ले shortcut बनाउँदा/हटाउँदा एप तुरुन्तै बन्द गर्ने।
@@ -149,6 +150,7 @@ app.whenReady().then(() => {
   registerCloudDictationHandlers();
   registerDiagnosticsHandlers();
   registerSpeakerHandlers();
+  registerGitStatusHandlers();
   createWindow();
 
   app.on('activate', () => {

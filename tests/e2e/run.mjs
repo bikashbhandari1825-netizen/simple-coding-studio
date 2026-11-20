@@ -90,6 +90,16 @@ window.__t = {
     while (performance.now() - t0 < ms) { try { const v = fn(); if (v) return v; } catch {} await new Promise((r) => setTimeout(r, step)); }
     return null;
   },
+  async idleGuru(ms = 120000) {
+    const busy = () => [...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹');
+    const t0 = performance.now();
+    let calm = 0;
+    while (performance.now() - t0 < ms) {
+      if (busy()) calm = 0; else if (++calm >= 12) return true;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return false;
+  },
   rows: () => [...document.querySelectorAll('aside li > div')],
   rowText: (d) => d.innerText.replace(/[🗑🔗]/gu, '').trim().split('\\n').pop().trim(),
   row(name) { return this.rows().find((d) => this.rowText(d) === name); },
@@ -298,6 +308,82 @@ function tests(fixture) {
       },
     },
     {
+      name: 'Status bar: project, save, run and Git status',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          const bar = document.querySelector('[data-testid=status-bar]');
+          const st = (k) => bar?.querySelector('[data-status=' + k + ']')?.textContent ?? null;
+          return { bar: bar?.innerText ?? '', save: st('save'), run: st('run'), git: st('git') };
+        })()`);
+        if (!r.bar.includes(path.basename(fixture)))
+          throw new Error('project name missing: ' + r.bar);
+        if (!r.save || !r.run || !r.git)
+          throw new Error('missing status parts: ' + JSON.stringify(r));
+        if (!/Git/.test(r.git)) throw new Error('git text: ' + r.git);
+        return `${r.save} | ${r.run} | ${r.git}`;
+      },
+    },
+    {
+      name: 'New Flutter app: starter picker (3 templates)',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          const btn = [...document.querySelectorAll('header button')].find((b) => b.textContent.includes('✨'));
+          btn.click();
+          const dlg = await __t.until(() => document.querySelector('[role=dialog] [role=radiogroup]'), 5000);
+          if (!dlg) return { error: 'no dialog' };
+          const radios = [...dlg.querySelectorAll('[role=radio]')];
+          const ids = radios.map((x) => x.dataset.template);
+          const before = radios.map((x) => x.getAttribute('aria-checked'));
+          radios.find((x) => x.dataset.template === 'map').click();
+          await __t.wait(150);
+          const after = [...dlg.querySelectorAll('[role=radio]')].map((x) => x.getAttribute('aria-checked'));
+          const hasName = Boolean(document.querySelector('[role=dialog] input'));
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          await __t.wait(250);
+          return { ids, before, after, hasName, closed: !document.querySelector('[role=dialog]') };
+        })()`);
+        if (r.error) throw new Error(r.error);
+        if (r.ids.join() !== 'basic,firebase,map')
+          throw new Error('templates: ' + r.ids);
+        if (
+          r.before.join() !== 'true,false,false' ||
+          r.after.join() !== 'false,false,true'
+        )
+          throw new Error('selection: ' + JSON.stringify(r));
+        if (!r.hasName || !r.closed) throw new Error(JSON.stringify(r));
+      },
+    },
+    {
+      name: 'Guru quick-action buttons sit below the input',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          const row = document.querySelector('aside [data-testid=quick-actions]');
+          const ta = document.querySelector('aside textarea');
+          if (!row || !ta) return { error: 'missing row or textarea' };
+          const labels = [...row.querySelectorAll('button')].map((b) => b.textContent.trim());
+          const below = row.getBoundingClientRect().top >= ta.getBoundingClientRect().bottom - 1;
+          [...row.querySelectorAll('button')].find((b) => b.textContent.includes('🧩')).click();
+          await __t.wait(300);
+          const filled = ta.value;
+          Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, '');
+          ta.dispatchEvent(new Event('input', { bubbles: true }));
+          return { labels, below, filled };
+        })()`);
+        if (r.error) throw new Error(r.error);
+        if (r.labels.length !== 3 || !r.below)
+          throw new Error(JSON.stringify(r));
+        for (const want of [
+          'यो फाइल बुझाऊ',
+          'एरर खोज र ठीक गर',
+          'नयाँ विजेट/रूट बनाऊ',
+        ])
+          if (!r.labels.some((l) => l.includes(want)))
+            throw new Error('label missing: ' + want);
+        if (!r.filled.startsWith('नयाँ widget/route बनाऊ'))
+          throw new Error('widget button did not prefill: ' + r.filled);
+      },
+    },
+    {
       name: 'Run a file: error → Fix Tip with file and line',
       run: async (p) => {
         const r = await p.eval(`(async () => {
@@ -393,7 +479,7 @@ function tests(fixture) {
             run: async (p) => {
               const r = await p.eval(
                 `(async () => {
-                await __t.until(() => ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 120000, 250);
+                await __t.idleGuru();
                 const ta = document.querySelector('aside textarea');
                 Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, 'print() ले के गर्छ? एक वाक्य नेपाली, एक वाक्य English।');
                 ta.dispatchEvent(new Event('input', { bubbles: true }));
@@ -412,6 +498,37 @@ function tests(fixture) {
               if (r.speaker < 1)
                 throw new Error('no speaker button under the answer');
               return `${r.ms} ms`;
+            },
+          },
+          {
+            name: 'One-click fix: Guru fix → diff preview → apply to file',
+            run: async (p) => {
+              const r = await p.eval(
+                `(async () => {
+                await __t.idleGuru();
+                await __t.open('main.dart');
+                await __t.until(() => __t.squiggles() > 0, 45000);
+                const code = () => document.querySelector('.monaco-editor .view-lines')?.innerText ?? '';
+                const before = code();
+                [...document.querySelectorAll('aside [data-testid=quick-actions] button')].find((b) => b.textContent.includes('🛠')).click();
+                const view = await __t.until(() => document.querySelector('[data-testid=diff-view]'), 150000, 300);
+                if (!view) return { error: 'diff dialog never opened' };
+                const diffText = view.innerText;
+                const apply = [...document.querySelectorAll('[role=dialog] button')].find((b) => b.textContent.includes('✅'));
+                apply.click();
+                await __t.wait(800);
+                const after = code();
+                return { before, after, diffText: diffText.slice(0, 300), closed: !document.querySelector('[data-testid=diff-view]') };
+              })()`,
+                200000,
+              );
+              if (r.error) throw new Error(r.error);
+              if (!/^[+−]/m.test(r.diffText))
+                throw new Error('empty diff: ' + r.diffText);
+              if (!r.closed) throw new Error('dialog did not close');
+              if (!r.before || !r.after || r.before === r.after)
+                throw new Error('file not changed by apply');
+              return `diff ok, file changed (${r.before.length} → ${r.after.length} chars)`;
             },
           },
         ]

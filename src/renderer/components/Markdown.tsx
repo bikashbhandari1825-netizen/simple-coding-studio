@@ -18,16 +18,22 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
 export function Markdown({
   text,
   onExplainCode,
+  onApplyCode,
   showCodeTools = true,
 }: {
   text: string;
   /** Code block को "🔍 बुझाऊ" थिच्दा — called when "Explain" is pressed on a code block. */
   onExplainCode?: (code: string, language: string) => void;
+  /** Code block को "🔧 फाइलमा लगाऊ" थिच्दा — called when "Preview & apply" is pressed on a code block. */
+  onApplyCode?: (code: string, language: string) => void;
   showCodeTools?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const explainRef = useRef(onExplainCode);
   explainRef.current = onExplainCode;
+  const applyRef = useRef(onApplyCode);
+  applyRef.current = onApplyCode;
+  const canApply = Boolean(onApplyCode);
 
   const html = useMemo(
     () =>
@@ -65,9 +71,18 @@ export function Markdown({
         mk(tr('🔍 लाइन-लाइन बुझाऊ · Explain line by line'), () =>
           explainRef.current?.(code, language),
         );
+      if (
+        applyRef.current &&
+        !/^(quiz|challenge|result|bash|sh|shell|powershell|cmd|console|text)$/.test(
+          language,
+        )
+      )
+        mk(tr('🔧 हेर्ने र फाइलमा लगाऊ · Preview & apply'), () =>
+          applyRef.current?.(code, language),
+        );
       pre.prepend(bar);
     }
-  }, [html, showCodeTools]);
+  }, [html, showCodeTools, canApply]);
 
   return (
     <div
