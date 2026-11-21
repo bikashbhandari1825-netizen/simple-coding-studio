@@ -143,6 +143,7 @@ export function TutorPanel({
   const inputRef = useRef(input);
   inputRef.current = input;
   const voiceBase = useRef('');
+  const skipFinal = useRef(false);
   const joinBase = (text: string) => {
     const base = voiceBase.current;
     return base && text ? `${base} ${text}` : base || text;
@@ -155,6 +156,11 @@ export function TutorPanel({
       setInput(joinBase(text));
     },
     (shown, better) => {
+      // submit भइसकेको रेकर्डिङको पछिल्लो पाठ बेवास्ता — ignore the late text of a recording that was already sent
+      if (skipFinal.current) {
+        skipFinal.current = false;
+        return;
+      }
       // 🎙️ छोटो आदेश भए काम गर्ने, पाठ नराख्ने — a short spoken command runs instead of becoming text.
       // 🧠 खुला quiz भए "A / बी / दोस्रो" उत्तर हो — with a quiz open, "A / B / second" answers it
       if (answerQuizByVoice(better)) {
@@ -343,9 +349,10 @@ export function TutorPanel({
   // ---------- Smart Guru Error Diagnostics ----------
   const [autoExplain, setAutoExplain] = useState(() => {
     try {
-      return localStorage.getItem(AUTO_KEY) !== 'off';
+      // नमागी नबोल्ने: पूर्वनिर्धारित बन्द — Guru never explains by itself unless the learner turns Auto on
+      return localStorage.getItem(AUTO_KEY) === 'on';
     } catch {
-      return true;
+      return false;
     }
   });
   const lastExplained = useRef('');
@@ -414,6 +421,13 @@ For each error: say which line, explain in simple words why it happened (what th
   const sendTyped = () => {
     const text = input.trim();
     if (!text || busyId) return;
+    // बोल्दै गर्दै submit गरे: रेकर्डिङ रोकेर अहिलेको पाठ तुरुन्तै पठाउने, पछि फेरि box मा नआउने
+    // Submitting while dictating: stop the mic, send the text now, and never let it come back into the box.
+    if (voice.state.stage === 'recording') {
+      skipFinal.current = true;
+      voice.stop();
+    }
+    voiceBase.current = '';
     setInput('');
     const ctx = getContext();
     void ask({

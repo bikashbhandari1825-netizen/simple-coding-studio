@@ -735,6 +735,115 @@ function tests(fixture) {
             },
           },
           {
+            name: 'Guru explain: English part is pure English, Nepali part comes below',
+            run: async (p) => {
+              const r = await p.eval(
+                `(async () => {
+                await __t.idleGuru();
+                await __t.open('app.js');
+                await __t.wait(800);
+                const btn = await __t.until(() => [...document.querySelectorAll('aside button')].find((b) => /📖/.test(b.innerText) && !b.disabled), 10000, 250);
+                if (!btn) return { error: 'no explain button: ' + [...document.querySelectorAll('aside button')].map((b) => b.innerText.trim().slice(0, 14) + (b.disabled ? '(off)' : '')).join(' | ') };
+                const before = document.querySelectorAll('aside .md-body').length;
+                btn.click();
+                await __t.wait(1500);
+                await __t.until(() => document.querySelectorAll('aside .md-body').length > before && (window.studio.stopSpeaking(), true) && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 200000, 500);
+                await window.studio.stopSpeaking();
+                const card = [...document.querySelectorAll('aside .md-body')].pop();
+                const clone = card.cloneNode(true);
+                clone.querySelectorAll('pre').forEach((x) => x.remove());
+                const lines = clone.innerText.split('\\n').map((l) => l.trim()).filter(Boolean);
+                const ne = lines.findIndex((l) => /^\\W*नेपाली\\W*$/.test(l));
+                const tail = lines.findIndex((l) => /📚/.test(l));
+                const english = lines.slice(0, ne < 0 ? lines.length : ne).filter((_, k) => tail < 0 || k < tail).join(' ');
+                return { ne, tail, devInEnglish: (english.match(/[ऀ-ॿ]+/g) ?? []).slice(0, 5), engHead: english.slice(0, 80), n: lines.length };
+              })()`,
+                260000,
+              );
+              if (r.error) throw new Error(r.error);
+              if (r.ne < 0)
+                throw new Error(
+                  'no separate नेपाली section: ' + JSON.stringify(r),
+                );
+              if (r.devInEnglish.length)
+                throw new Error(
+                  'Nepali inside the English part: ' + JSON.stringify(r),
+                );
+              return 'English part: ' + r.engHead;
+            },
+          },
+          {
+            name: 'Guru "give code": code first, no quiz, no follow-up questions',
+            run: async (p) => {
+              const r = await p.eval(
+                `(async () => {
+                await __t.idleGuru();
+                await __t.open('ok.dart');
+                const ta = [...document.querySelectorAll('aside textarea')].pop();
+                Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, 'Dart मा दुई नम्बर जोड्ने function को कोड देऊ');
+                ta.dispatchEvent(new Event('input', { bubbles: true }));
+                await __t.wait(200);
+                const before = document.querySelectorAll('aside .md-body').length;
+                (await __t.until(() => [...document.querySelectorAll('aside button')].find((b) => b.innerText.trim() === '➤' && !b.disabled), 120000, 250)).click();
+                await __t.wait(1500);
+                await __t.until(() => document.querySelectorAll('aside .md-body').length > before && (window.studio.stopSpeaking(), true) && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 200000, 500);
+                await window.studio.stopSpeaking();
+                const card = [...document.querySelectorAll('aside .md-body')].pop();
+                const clone = card.cloneNode(true);
+                const code = clone.querySelectorAll('pre').length;
+                clone.querySelectorAll('pre').forEach((x) => x.remove());
+                const text = clone.innerText;
+                return { code, words: text.split(' ').filter(Boolean).length, quiz: card.innerHTML.includes('quiz') || /quiz|प्रश्न/i.test(text), asks: /\\?\\s*$/.test(text.trim()) || /say yes|shall I|चाहनुहुन्छ|भन्नुहोस् भने/i.test(text), head: text.slice(0, 120) };
+              })()`,
+                260000,
+              );
+              if (r.code < 1) throw new Error('no code: ' + JSON.stringify(r));
+              if (r.words > 110)
+                throw new Error(
+                  'too much text around the code: ' + JSON.stringify(r),
+                );
+              if (r.asks)
+                throw new Error(
+                  'ends with a follow-up question: ' + JSON.stringify(r),
+                );
+              return r.words + ' words around the code';
+            },
+          },
+          {
+            name: 'Guru builds an app: full code for every file, not just a structure',
+            run: async (p) => {
+              const r = await p.eval(
+                `(async () => {
+                await __t.idleGuru();
+                await __t.open('ok.dart');
+                const ta = document.querySelector('aside:last-of-type textarea') ?? [...document.querySelectorAll('aside textarea')].pop();
+                Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, 'मलाई Flutter मा सानो counter एप बनाइदेऊ, पूरा कोड सहित।');
+                ta.dispatchEvent(new Event('input', { bubbles: true }));
+                await __t.wait(200);
+                const before = document.querySelectorAll('aside .md-body').length;
+                (await __t.until(() => [...document.querySelectorAll('aside button')].find((b) => b.innerText.trim() === '➤' && !b.disabled), 120000, 250)).click();
+                await __t.wait(1500);
+                const t0 = performance.now();
+                await __t.until(() => document.querySelectorAll('aside .md-body').length > before && (window.studio.stopSpeaking(), true) && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 280000, 500);
+                const card = [...document.querySelectorAll('aside .md-body')].pop();
+                await window.studio.stopSpeaking();
+                const blocks = [...card.querySelectorAll('pre')].map((x) => x.innerText);
+                return { ms: Math.round(performance.now() - t0), n: blocks.length, hasMain: /void main\\(/.test(blocks.join(' ')) && /runApp\\(/.test(blocks.join(' ')), hasState: blocks.some((b) => /(StatefulWidget|setState|ChangeNotifier|ValueNotifier)/.test(b)), chars: blocks.join('').length, head: card.innerText.slice(0, 80) };
+              })()`,
+                300000,
+              );
+              if (!r.hasMain)
+                throw new Error(
+                  'no complete main.dart in the answer: ' + JSON.stringify(r),
+                );
+              if (!r.hasState || r.chars < 400)
+                throw new Error(
+                  'code too short/incomplete: ' + JSON.stringify(r),
+                );
+              return `${r.n} code block(s), ${r.chars} chars, ${r.ms} ms`;
+            },
+          },
+          {
             name: 'Problems panel: "Fix with Guru" jumps to the file and asks Guru',
             run: async (p) => {
               const r = await p.eval(
@@ -773,7 +882,7 @@ function tests(fixture) {
                 const before = code();
                 [...document.querySelectorAll('aside [data-testid=quick-actions] button')].find((b) => b.textContent.includes('🛠')).click();
                 const view = await __t.until(() => document.querySelector('[data-testid=diff-view]'), 150000, 300);
-                if (!view) return { error: 'diff dialog never opened' };
+                if (!view) return { error: 'diff dialog never opened; note: ' + ([...document.querySelectorAll('aside')].pop()?.innerText.match(/अहिले कुनै गल्ती[^\\n]*/)?.[0] ?? 'none') + ' | last answer: ' + ([...document.querySelectorAll('aside .md-body')].pop()?.innerText.slice(0, 300) ?? '') };
                 const diffText = view.innerText;
                 const apply = [...document.querySelectorAll('[role=dialog]:not(.find-widget) button')].find((b) => b.textContent.includes('✅'));
                 apply.click();

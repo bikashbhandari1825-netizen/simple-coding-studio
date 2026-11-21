@@ -743,9 +743,10 @@ export default function App() {
   const [runFailedAt, setRunFailedAt] = useState(0);
   useEffect(() => {
     if (!runFailedAt || !account.status?.loggedIn) return;
-    let auto = true;
+    // पूर्वनिर्धारित बन्द: Run असफल हुँदा पनि Guru आफैं बोल्दैन — off by default: Guru stays quiet after a failed run unless Auto is on
+    let auto = false;
     try {
-      auto = localStorage.getItem('studio.guruAutoExplain') !== 'off';
+      auto = localStorage.getItem('studio.guruAutoExplain') === 'on';
     } catch {
       // ignore
     }

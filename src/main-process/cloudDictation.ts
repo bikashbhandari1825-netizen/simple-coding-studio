@@ -55,12 +55,22 @@ const PAGE = (
 <script>
 const base = '/d/${tok}';
 const R = window.SpeechRecognition || window.webkitSpeechRecognition;
-const post = (o) => fetch(base + '/ev', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) }).catch(() => {});
+// घटनाहरू क्रमैसँग पठाउने (एकपछि अर्को), नत्र शब्द अघिपछि वा हराउन सक्छन् — send events strictly in order, or words can arrive shuffled or be lost.
+let chain = Promise.resolve();
+const post = (o) => { chain = chain.then(() => fetch(base + '/ev', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) }).catch(() => {})); };
+// अन्तिम नभएको बोलाइ (browser ले session बन्द गर्दा हराउने) — words heard but not yet final; Chrome drops them when a session ends.
+let lastInterim = '';
+function flushInterim() {
+  const t = lastInterim.trim();
+  lastInterim = '';
+  if (t) { post({ type: 'final', text: t }); post({ type: 'interim', text: '' }); }
+}
 // एकपटकमा एउटा मात्र recognizer: पुरानाका घटनाहरू बेवास्ता — only one recognizer at a time; events from old ones are ignored.
-let current = null, active = false, lang = 'ne-NP';
+let current = null, active = false, lang = 'ne-NP', netFails = 0;
 function retire(r) {
   if (!r) return;
   r.onstart = r.onresult = r.onerror = r.onend = null;
+  flushInterim();
   try { r.abort(); } catch {}
 }
 function begin() {
@@ -68,7 +78,7 @@ function begin() {
   const r = new R();
   current = r;
   r.lang = lang; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1;
-  r.onstart = () => { if (r === current) post({ type: 'start' }); };
+  r.onstart = () => { if (r === current) { netFails = 0; post({ type: 'start' }); } };
   r.onresult = (e) => {
     if (r !== current) return;
     let interim = '';
@@ -76,17 +86,22 @@ function begin() {
       const t = e.results[i][0].transcript;
       if (e.results[i].isFinal) post({ type: 'final', text: t }); else interim += t;
     }
+    lastInterim = interim;
     post({ type: 'interim', text: interim });
   };
   r.onerror = (e) => {
     if (r !== current) return;
     if (e.error === 'not-allowed' || e.error === 'service-not-allowed' || e.error === 'language-not-supported') active = false;
-    if (e.error !== 'no-speech' && e.error !== 'aborted') post({ type: 'error', error: e.error });
+    // network/no-speech/aborted ले बीचमा रोकिए पनि आफैं फेरि सुरु हुन्छ (onend मा) — these end the session; onend restarts it.
+    if (e.error !== 'no-speech' && e.error !== 'aborted' && e.error !== 'network') post({ type: 'error', error: e.error });
+    else if (e.error === 'network') netFails++;
+    if (netFails >= 4) { post({ type: 'error', error: 'network' }); netFails = 0; }
   };
   // Browser आफैं केही बेरपछि रोकिन्छ; 🎤 चालु भएसम्म नयाँ सुरु गर्ने — browsers stop on their own; start a fresh one while active.
   r.onend = () => {
     if (r !== current) return;
-    if (active) setTimeout(() => { if (active && r === current) begin(); }, 60);
+    flushInterim();
+    if (active) setTimeout(() => { if (active && r === current) begin(); }, 0);
     else { current = null; post({ type: 'end' }); }
   };
   r.start();
@@ -196,6 +211,11 @@ async function ensureBrowser(): Promise<void> {
         '--no-default-browser-check',
         '--disable-extensions',
         '--disable-sync',
+        // लुकेको window ले आवाज पहिचान नरोकोस् — keep the hidden window from being throttled or paused.
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-features=CalculateNativeWinOcclusion',
         // Screen बाहिर लुकाउने — keep the window off-screen.
         '--window-position=-32000,-32000',
         '--window-size=360,120',

@@ -154,6 +154,8 @@ export function useVoiceInput(
 
   const start = useCallback(async () => {
     setError('');
+    // Guru को आवाज बन्द गर्ने, नत्र mic ले त्यही सुनेर लेख्छ — stop Guru's voice, or the mic will hear it and type it.
+    void window.studio.stopSpeaking().catch(() => undefined);
     if (!available) {
       setError(
         'Voice typing का लागि Chrome वा Edge चाहिन्छ। — Voice typing needs Chrome or Edge installed.',
@@ -255,5 +257,6 @@ export function useVoiceInput(
     error,
     clearError: () => setError(''),
     toggle,
+    stop,
   };
 }
