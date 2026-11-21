@@ -41,6 +41,10 @@ function makeFixture() {
     "void main() {\n  int count = 'five'\n  print(count);\n}\n",
   );
   w('lib/ok.dart', 'int add(int a, int b) => a + b;\n');
+  w(
+    'lib/typo_import.dart',
+    "import 'packages:flutter/matterial.dart';\nimport 'dart:async';\n\nvoid main() {}\n",
+  );
   w('lib/format_me.dart', 'void main(){print( "x" );}\n');
   w('app.js', 'const name = "Bikash";\nconsole.log(nme);\n');
   w('hello.py', 'def greet(name)\n    print("Namaste", name)\n');
@@ -482,6 +486,50 @@ function tests(fixture) {
           throw new Error('undo did not restore the text');
         if (!r.redone) throw new Error('redo did not re-apply');
         if (!r.toast) throw new Error('no format toast');
+      },
+    },
+    {
+      name: 'Import typo: red line + green valid import + one-click fix, Guru stays silent',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          const mdBefore = document.querySelectorAll('aside .md-body').length;
+          await __t.open('typo_import.dart');
+          const bad = await __t.until(() => document.querySelectorAll('.monaco-editor .import-bad-line').length > 0 && document.querySelectorAll('.monaco-editor .import-ok-line').length > 0, 30000);
+          const first = document.querySelector('.monaco-editor .view-line');
+          const rect = first.getBoundingClientRect();
+          return { bad: Boolean(bad), squiggles: __t.squiggles(), x: Math.round(rect.left + 60), y: Math.round(rect.top + rect.height / 2), mdBefore };
+        })()`);
+        if (!r.bad)
+          throw new Error(
+            'import lines are not coloured: ' + JSON.stringify(r),
+          );
+        if (r.squiggles < 1) throw new Error('no red squiggle for the typo');
+        // Ctrl+. → Quick Fix list → Enter
+        await p.click(r.x, r.y);
+        await p.key('.', 'Period', 190, 2);
+        const menu = await p.eval(`(async () => {
+          const w = await __t.until(() => [...document.querySelectorAll('.action-widget, .codeActionWidget')].find((e) => /package:flutter\\/material\\.dart/.test(e.innerText)), 8000);
+          return w ? w.innerText.replace(/\\s+/g, ' ').slice(0, 160) : null;
+        })()`);
+        if (!menu)
+          throw new Error('no one-click "Change to" suggestion appeared');
+        await p.key('Enter', 'Enter', 13);
+        const after = await p.eval(`(async () => {
+          const line1 = () => document.querySelector('.monaco-editor .view-line')?.innerText ?? '';
+          await __t.until(() => line1().includes('package:flutter/material.dart'), 5000);
+          // Guru ने आफैं केही नगरोस् — Guru must not start anything by itself
+          await __t.wait(6000);
+          return { line1: line1(), md: document.querySelectorAll('aside .md-body').length, busy: [...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), autoToggle: /आफैं · Auto/.test(document.body.innerText) };
+        })()`);
+        if (!after.line1.includes("'package:flutter/material.dart'"))
+          throw new Error('fix not applied: ' + after.line1);
+        if (after.md !== r.mdBefore || after.busy)
+          throw new Error(
+            'Guru answered or started by itself: ' + JSON.stringify(after),
+          );
+        if (after.autoToggle)
+          throw new Error('an Auto-explain toggle is still shown');
+        return menu;
       },
     },
     {

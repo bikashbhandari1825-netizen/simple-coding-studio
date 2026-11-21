@@ -2,6 +2,7 @@ import * as monaco from 'monaco-editor';
 import type { EditorDiagnostic } from '../shared/types';
 import { tr } from './i18n';
 import { newId } from './lib/helpers';
+import { findImportTypos } from './lib/importTypos';
 
 // 💡 Smart IntelliSense:
 //  - Dart: Dart analysis server बाट वास्तविक सुझाव र Quick Fix (VS Code कै इन्जिन)।
@@ -219,8 +220,40 @@ export function installIntellisense(): void {
       const errors = context.markers.filter(
         (m) => m.severity >= monaco.MarkerSeverity.Warning,
       );
-      if (!errors.length) return { actions: [], dispose: () => undefined };
       const actions: monaco.languages.CodeAction[] = [];
+      // ✏️ import टाइपो: AI बिना एक क्लिकमा सच्याउने — one-click import typo fix, no AI needed
+      if (model.getLanguageId() === 'dart') {
+        for (const t of findImportTypos(model.getValue())) {
+          if (t.line < range.startLineNumber || t.line > range.endLineNumber)
+            continue;
+          actions.push({
+            title: tr(
+              `✅ "${t.suggestion}" मा बदल · Change to "${t.suggestion}"`,
+            ),
+            kind: 'quickfix',
+            isPreferred: true,
+            diagnostics: errors.filter((m) => m.startLineNumber === t.line),
+            edit: {
+              edits: [
+                {
+                  resource: model.uri,
+                  versionId: model.getVersionId(),
+                  textEdit: {
+                    range: new monaco.Range(
+                      t.line,
+                      t.startColumn,
+                      t.line,
+                      t.endColumn,
+                    ),
+                    text: t.suggestion,
+                  },
+                },
+              ],
+            },
+          });
+        }
+      }
+      if (!errors.length) return { actions, dispose: () => undefined };
       const file = pathOf(model);
       // Dart analysis server का तयारी fix — ready-made fixes from the Dart analysis server
       // उत्तर आउँदासम्म फाइल बदलियो भने पुरानो fix नलगाउने — never apply fixes computed for older text

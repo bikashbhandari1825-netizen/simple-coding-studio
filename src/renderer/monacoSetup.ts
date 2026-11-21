@@ -52,6 +52,27 @@ if (ts) {
   ts.javascriptDefaults.setCompilerOptions(opts);
 }
 
+// 🎨 रङ: रातो = गलत, नीलो = चेतावनी, हरियो = ठीक। पहेँलो/amber कतै प्रयोग नगर्ने (अलमल हुन्छ)।
+// Colours: red = wrong, sky-blue = warning, green = fine. No yellow/amber, it is confusing.
+monaco.editor.defineTheme('studio-dark', {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [],
+  colors: {
+    'editorError.foreground': '#ff4d4d',
+    'editorError.border': '#00000000',
+    'editorWarning.foreground': '#38bdf8',
+    'editorWarning.border': '#00000000',
+    'editorInfo.foreground': '#94a3b8',
+    'editorOverviewRuler.errorForeground': '#ff4d4d',
+    'editorOverviewRuler.warningForeground': '#38bdf8',
+    'editorOverviewRuler.infoForeground': '#94a3b8',
+    'editorGutter.addedBackground': '#22c55e',
+    'list.errorForeground': '#ff6b6b',
+    'list.warningForeground': '#7dd3fc',
+  },
+});
+
 loader.config({ monaco });
 
 // स्वचालित परीक्षणका लागि (development मा मात्र) — exposed for automated tests, development only.

@@ -45,6 +45,7 @@ import type {
 import { useNavHistory, type NavLoc } from './lib/useNavHistory';
 import { setNotifier, setOpenFiles } from './intellisense';
 import type { VoiceCommand } from './lib/voiceCommands';
+import { findImportTypos, parseDartImports } from './lib/importTypos';
 
 type DialogKind =
   | 'newFile'
@@ -198,9 +199,6 @@ export default function App() {
           if (event.code === 0 && !event.stoppedByUser)
             setTimeout(() => void runPresetRef.current(again.presetId), 300);
         }
-        // Run गल्तीसहित बन्द भयो: Guru लाई आफैं बुझाउन भन्ने (Auto खुला भए) — a failed run: let Guru explain it (if Auto is on).
-        if (event.code !== 0 && !event.stoppedByUser)
-          setRunFailedAt(Date.now());
         pushLine(
           event.code === 0 || event.stoppedByUser ? 'info' : 'error',
           event.stoppedByUser
@@ -739,34 +737,6 @@ export default function App() {
     }, 4000);
   };
 
-  // Run असफल भएपछि output र गल्तीहरू सहित Guru आफैं बोलाउने — after a failed run, Guru explains it by itself.
-  const [runFailedAt, setRunFailedAt] = useState(0);
-  useEffect(() => {
-    if (!runFailedAt || !account.status?.loggedIn) return;
-    // पूर्वनिर्धारित बन्द: Run असफल हुँदा पनि Guru आफैं बोल्दैन — off by default: Guru stays quiet after a failed run unless Auto is on
-    let auto = false;
-    try {
-      auto = localStorage.getItem('studio.guruAutoExplain') === 'on';
-    } catch {
-      // ignore
-    }
-    if (!auto) return;
-    // Fix Tip हरू तयार हुन एकछिन पर्खने — give the Fix Tips a moment to be computed.
-    const t = setTimeout(() => {
-      setPendingTutor({
-        mode: 'fix',
-        label: tr(
-          '🤖 🩺 Run असफल भयो — Guru ले कारण र उपाय बताउँछ · The run failed — Guru explains why and how to fix it',
-        ),
-        prompt:
-          'I pressed Run and it failed. Read the output below. Many errors usually come from only 1-3 root causes: group them by cause (say how many errors each cause explains), most important first. For each cause give: ❓ why (one line, file and line) and ✅ the one-click fix (name the button shown on the Fix card, e.g. "Add package and get packages", or the exact corrected code). Keep it short. Do not list every error separately.',
-        context: getContext(),
-      });
-    }, 600);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per failure
-  }, [runFailedAt]);
-
   // ---------- Smart Error Analyzer ----------
   // अन्तिम run को output मात्र पढ्ने — analyse only the latest run's output.
   const runOutput = useMemo(() => {
@@ -988,6 +958,75 @@ export default function App() {
     }
   }, [diagnostics, tabs, activePath]);
 
+  // ✏️ Dart import को टाइपो (जस्तै packages:flutter/matterial.dart) — रातो रेखा र एक क्लिकको सुझाव, AI बिना।
+  // Dart import typos get a red squiggle and a one-click suggestion, with no AI involved.
+  useEffect(() => {
+    for (const tab of tabs) {
+      if (!/.dart$/i.test(tab.path)) continue;
+      const model = monaco.editor.getModel(monaco.Uri.parse(tab.path));
+      if (!model) continue;
+      monaco.editor.setModelMarkers(
+        model,
+        'studio-typo',
+        findImportTypos(tab.content).map((t) => ({
+          severity: monaco.MarkerSeverity.Error,
+          message: tr(
+            `✏️ टाइपो? "${t.uri}" होइन, "${t.suggestion}" हुनुपर्छ · Typo? Did you mean "${t.suggestion}"?`,
+          ),
+          startLineNumber: t.line,
+          startColumn: t.startColumn,
+          endLineNumber: t.line,
+          endColumn: t.endColumn,
+          source: 'Typo',
+          code: 'studio-typo',
+        })),
+      );
+    }
+  }, [tabs, activePath]);
+
+  // ✅/❌ import लाइनको रङ: ठीक = हरियो, गलत = रातो — import lines: green when fine, red when wrong.
+  const importDeco = useRef<Monaco.editor.IEditorDecorationsCollection | null>(
+    null,
+  );
+  useEffect(() => {
+    const paint = () => {
+      const editor = editorRef.current;
+      const model = editor?.getModel();
+      if (!editor || !model || !activePath || !/.dart$/i.test(activePath)) {
+        importDeco.current?.clear();
+        return;
+      }
+      if (model.uri.toString() !== monaco.Uri.parse(activePath).toString())
+        return;
+      const wrong = new Set(
+        monaco.editor
+          .getModelMarkers({ resource: model.uri })
+          .filter((m) => m.severity === monaco.MarkerSeverity.Error)
+          .map((m) => m.startLineNumber),
+      );
+      const decorations = parseDartImports(model.getValue()).map((imp) => {
+        const bad = wrong.has(imp.line);
+        return {
+          range: new monaco.Range(imp.line, 1, imp.line, 1),
+          options: {
+            isWholeLine: true,
+            className: bad ? 'import-bad-line' : 'import-ok-line',
+            linesDecorationsClassName: bad ? 'import-bad-bar' : 'import-ok-bar',
+          },
+        };
+      });
+      if (importDeco.current) importDeco.current.set(decorations);
+      else importDeco.current = editor.createDecorationsCollection(decorations);
+    };
+    paint();
+    const again = setTimeout(paint, 150);
+    const sub = monaco.editor.onDidChangeMarkers(paint);
+    return () => {
+      clearTimeout(again);
+      sub.dispose();
+    };
+  }, [activePath, activeTab?.content]);
+
   // खुला फाइलका सबै गल्ती (Monaco, Dart, Python, run) — every error in the open file, for Guru and the status bar.
   // खुला फाइल र त्यसका गल्ती सँगै राख्ने, ताकि Guru ले कहिल्यै अर्को फाइलको गल्ती नबुझाओस्।
   // Keep the errors together with the file they belong to, so Guru never explains another file's errors.
@@ -1053,9 +1092,20 @@ export default function App() {
         const model = monaco.editor.getModel(monaco.Uri.parse(tab.path));
         if (!model) continue;
         const seen = new Set<string>();
-        for (const m of monaco.editor.getModelMarkers({
-          resource: model.uri,
-        })) {
+        const all = monaco.editor.getModelMarkers({ resource: model.uri });
+        // टाइपोको सुझाव भएको लाइनमा Dart को लामो URI गल्ती नदोहोर्याउने — skip the analyzer's duplicate URI error on a line with a typo hint
+        const typoLines = new Set(
+          all
+            .filter((m) => m.owner === 'studio-typo')
+            .map((m) => m.startLineNumber),
+        );
+        for (const m of all) {
+          if (
+            m.owner !== 'studio-typo' &&
+            typoLines.has(m.startLineNumber) &&
+            /uri/i.test(m.message)
+          )
+            continue;
           const severity =
             m.severity === monaco.MarkerSeverity.Error
               ? 'error'
@@ -1615,7 +1665,7 @@ export default function App() {
           <>
             <span
               data-status="save"
-              className={dirtyCount > 0 ? 'text-amber-400' : undefined}
+              className={dirtyCount > 0 ? 'text-sky-400' : undefined}
             >
               {dirtyCount > 0
                 ? tr(`● ${dirtyCount} सेभ बाँकी · unsaved`)
@@ -1663,7 +1713,7 @@ export default function App() {
                 git.hasRemote
                   ? 'text-emerald-400'
                   : git.isRepo
-                    ? 'text-amber-300'
+                    ? 'text-sky-300'
                     : undefined
               }
             >
@@ -1693,7 +1743,7 @@ export default function App() {
               problems.some((p) => p.severity === 'error')
                 ? 'text-rose-400'
                 : problems.length
-                  ? 'text-amber-300'
+                  ? 'text-sky-300'
                   : 'text-slate-400'
             }`}
           >

@@ -85,7 +85,7 @@ export function EditorArea({
                 }}
               >
                 {dirty ? (
-                  <span className="text-amber-400 group-hover:hidden">●</span>
+                  <span className="text-sky-400 group-hover:hidden">●</span>
                 ) : null}
                 <span className={dirty ? 'hidden group-hover:inline' : ''}>
                   ×
@@ -97,7 +97,7 @@ export function EditorArea({
       </div>
       <div className="min-h-0 flex-1">
         <Editor
-          theme="vs-dark"
+          theme="studio-dark"
           path={active.path}
           language={active.language}
           value={active.content}

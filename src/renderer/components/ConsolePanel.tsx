@@ -28,7 +28,7 @@ interface Props {
 const COLORS: Record<ConsoleLine['kind'], string> = {
   command: 'text-sky-300 font-semibold',
   stdout: 'text-slate-200',
-  stderr: 'text-amber-300',
+  stderr: 'text-rose-300',
   info: 'text-emerald-300',
   error: 'text-rose-400',
 };
@@ -155,11 +155,11 @@ function FixTipCard({
     : '';
   return (
     <div
-      className="my-2 rounded-lg border border-amber-600/70 bg-amber-950/40 p-3 font-sans whitespace-normal"
+      className="my-2 rounded-lg border border-rose-600/70 bg-rose-950/40 p-3 font-sans whitespace-normal"
       role="note"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-semibold text-amber-200">
+        <span className="text-sm font-semibold text-rose-200">
           {tr("🧑‍🏫 Guru को Fix Tip · Guru's Fix Tip")}
         </span>
         <span className="rounded bg-rose-900/70 px-1.5 py-0.5 font-mono text-[11px] text-rose-200">
@@ -167,7 +167,7 @@ function FixTipCard({
         </span>
         {(tip.count ?? 1) > 1 && (
           <span
-            className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[11px] font-bold text-amber-100"
+            className="rounded-full bg-rose-500/20 px-2 py-0.5 text-[11px] font-bold text-rose-100"
             title={tr('एउटै कारणले आएका error हरू · Errors with this same cause')}
           >
             ×{tip.count} {tr('error, एउटै कारण · errors, one cause')}
@@ -187,7 +187,7 @@ function FixTipCard({
       <p className="mt-1 font-mono text-xs break-words text-rose-300">
         {tip.message}
       </p>
-      <p className="mt-1.5 text-[13px] leading-5 text-amber-50">
+      <p className="mt-1.5 text-[13px] leading-5 text-rose-50">
         💡 {tr(tip.tip)}
       </p>
       <div className="mt-2 flex flex-wrap gap-2">

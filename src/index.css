@@ -815,3 +815,19 @@ input[type='checkbox'] {
   background: #1e293b;
   color: #fff;
 }
+
+/* ✅ ठीक import हरियो, ❌ गलत import रातो — valid imports green, wrong imports red */
+.import-ok-line {
+  background: rgba(34, 197, 94, 0.1);
+}
+.import-ok-bar {
+  border-left: 3px solid #22c55e;
+  margin-left: 3px;
+}
+.import-bad-line {
+  background: rgba(239, 68, 68, 0.16);
+}
+.import-bad-bar {
+  border-left: 3px solid #ef4444;
+  margin-left: 3px;
+}

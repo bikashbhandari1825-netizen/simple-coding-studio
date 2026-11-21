@@ -37,7 +37,7 @@ export function ProblemsPanel({
       <div className="flex items-center gap-3 border-b border-slate-800 px-3 py-1 text-xs text-slate-300">
         <span className="font-semibold">{tr('समस्या · Problems')}</span>
         <span className="text-rose-400">⛔ {errors}</span>
-        <span className="text-amber-300">⚠ {warnings}</span>
+        <span className="text-sky-300">⚠ {warnings}</span>
         <div className="flex-1" />
         <button
           className="text-slate-500 hover:text-slate-200"
@@ -67,7 +67,7 @@ export function ProblemsPanel({
             >
               <span
                 className={
-                  p.severity === 'error' ? 'text-rose-400' : 'text-amber-300'
+                  p.severity === 'error' ? 'text-rose-400' : 'text-sky-300'
                 }
               >
                 {p.severity === 'error' ? '⛔' : '⚠'}

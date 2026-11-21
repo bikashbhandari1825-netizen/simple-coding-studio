@@ -105,12 +105,6 @@ export interface EditorError {
   source: string;
 }
 
-const AUTO_KEY = 'studio.guruAutoExplain';
-/** टाइप गर्न रोकेपछि यति बेर पर्खेर मात्र Guru आफैं बोलाउने — wait this long after typing stops. */
-const AUTO_DELAY_MS = 3500;
-/** Guru आफैं बोलाउने बीचको न्यूनतम अन्तर (Claude को usage बचाउन) — minimum gap between automatic calls. */
-const AUTO_MIN_GAP_MS = 20_000;
-
 export function TutorPanel({
   account,
   getContext,
@@ -347,65 +341,33 @@ export function TutorPanel({
   }, [pending, busyId, ask, onPendingHandled]);
 
   // ---------- Smart Guru Error Diagnostics ----------
-  const [autoExplain, setAutoExplain] = useState(() => {
-    try {
-      // नमागी नबोल्ने: पूर्वनिर्धारित बन्द — Guru never explains by itself unless the learner turns Auto on
-      return localStorage.getItem(AUTO_KEY) === 'on';
-    } catch {
-      return false;
-    }
-  });
   const lastExplained = useRef('');
-  const lastAutoAt = useRef(0);
   const errorSignature = activeFile
     ? `${activeFile}|${editorErrors.map((e) => `${e.line}:${e.message}`).join('|')}`
     : '';
 
-  const explainErrors = useCallback(
-    (auto: boolean) => {
-      if (!activeFile || editorErrors.length === 0) return;
-      lastExplained.current = errorSignature;
-      if (auto) lastAutoAt.current = Date.now();
-      const list = editorErrors
-        .slice(0, 8)
-        .map(
-          (e) =>
-            `- line ${e.line}, column ${e.column} (${e.source}): ${e.message}`,
-        )
-        .join('\n');
-      void ask({
-        mode: 'fix',
-        label: tr(
-          `${auto ? '🤖 ' : ''}🩺 ${activeFile} मा ${editorErrors.length} गल्ती — किन भयो र कसरी सच्याउने · ${editorErrors.length} error(s) in ${activeFile}: why and how to fix`,
-        ),
-        prompt: `My code editor shows these errors in ${activeFile}:
+  const explainErrors = useCallback(() => {
+    if (!activeFile || editorErrors.length === 0) return;
+    lastExplained.current = errorSignature;
+    const list = editorErrors
+      .slice(0, 8)
+      .map(
+        (e) =>
+          `- line ${e.line}, column ${e.column} (${e.source}): ${e.message}`,
+      )
+      .join('\n');
+    void ask({
+      mode: 'fix',
+      label: tr(
+        `🩺 ${activeFile} मा ${editorErrors.length} गल्ती — किन भयो र कसरी सच्याउने · ${editorErrors.length} error(s) in ${activeFile}: why and how to fix`,
+      ),
+      prompt: `My code editor shows these errors in ${activeFile}:
 ${list}
 
 For each error: say which line, explain in simple words why it happened (what the rule is), then show the corrected line(s) of code. Finish with a short tip so I avoid this mistake next time.`,
-        context: { ...getContext(), runOutput: undefined },
-      });
-    },
-    [activeFile, editorErrors, errorSignature, ask, getContext],
-  );
-
-  // टाइप गर्न रोकेपछि नयाँ गल्ती रहिरहे Guru आफैं बुझाउँछ — after typing pauses, Guru explains new errors by itself.
-  useEffect(() => {
-    if (!autoExplain || !errorSignature || editorErrors.length === 0) return;
-    if (errorSignature === lastExplained.current || !account.status?.loggedIn)
-      return;
-    const t = setTimeout(() => {
-      if (busyId || Date.now() - lastAutoAt.current < AUTO_MIN_GAP_MS) return;
-      explainErrors(true);
-    }, AUTO_DELAY_MS);
-    return () => clearTimeout(t);
-  }, [
-    autoExplain,
-    errorSignature,
-    editorErrors.length,
-    busyId,
-    account.status?.loggedIn,
-    explainErrors,
-  ]);
+      context: { ...getContext(), runOutput: undefined },
+    });
+  }, [activeFile, editorErrors, errorSignature, ask, getContext]);
 
   /** Guru को code block को "🔍 बुझाऊ" — explain a code block from Guru's answer. */
   const explainCodeBlock = (code: string, language: string) => {
@@ -1000,29 +962,6 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
                 )}
               </span>
               <div className="flex-1" />
-              <label
-                className="flex cursor-pointer items-center gap-1 text-[11px] text-rose-200"
-                title={tr(
-                  'टाइप गर्न रोकेको ३.५ सेकेन्डपछि Guru आफैं बुझाउँछ (बढीमा २० सेकेन्डमा एकपटक) · Guru explains new errors by itself 3.5 s after you stop typing (at most once every 20 s)',
-                )}
-              >
-                <input
-                  type="checkbox"
-                  checked={autoExplain}
-                  onChange={(e) => {
-                    setAutoExplain(e.target.checked);
-                    try {
-                      localStorage.setItem(
-                        AUTO_KEY,
-                        e.target.checked ? 'on' : 'off',
-                      );
-                    } catch {
-                      // ignore
-                    }
-                  }}
-                />
-                {tr('🤖 आफैं · Auto')}
-              </label>
             </div>
             <ul className="mt-1 max-h-20 space-y-0.5 overflow-auto">
               {editorErrors.slice(0, 5).map((e, i) => (
@@ -1040,7 +979,7 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
             <button
               className="chip mt-1.5 border-rose-600 text-rose-100"
               disabled={!!busyId}
-              onClick={() => explainErrors(false)}
+              onClick={() => explainErrors()}
             >
               {tr(
                 '🩺 Guru लाई किन र कसरी सच्याउने सोध · Ask Guru why and how to fix',
