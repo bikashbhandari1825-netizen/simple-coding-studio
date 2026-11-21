@@ -13,9 +13,14 @@ const LATIN = /[A-Za-z]/g;
 const EMOJI = /(?:\p{Extended_Pictographic}|\u{FE0F}|\u{200D})/gu;
 const MAX_CHUNK = 260;
 
+// English वाक्यमा कोष्ठकभित्रको नेपाली अर्थ (जस्तै "shows (देखाउँछ) text") ले वाक्यलाई नेपाली बनाउनु हुँदैन।
+// A Nepali gloss in brackets inside an English sentence must not turn the sentence into Nepali.
+const NEPALI_GLOSS = /\s*\([^()]*[ऀ-ॿ][^()]*\)/g;
+
 function langOf(sentence: string): SpeakChunk['lang'] {
-  const dev = sentence.match(DEVANAGARI)?.length ?? 0;
-  const lat = sentence.match(LATIN)?.length ?? 0;
+  const bare = sentence.replace(NEPALI_GLOSS, ' ');
+  const dev = bare.match(DEVANAGARI)?.length ?? 0;
+  const lat = bare.match(LATIN)?.length ?? 0;
   // थोरै मात्र नेपाली भए पनि नेपाली आवाज: नेपाली मान्छेले English प्राविधिक शब्द आफ्नै लवजमा भन्छ।
   // Any real Nepali content gets the Nepali voice; a Nepali speaker says English terms in a Nepali accent.
   return dev >= 2 && dev >= lat * 0.15 ? 'ne-NP' : 'en-US';
@@ -136,9 +141,33 @@ function speakBlocks(markdown: string): string {
   );
 }
 
+type Section = 'en' | 'ne' | null;
+
+/**
+ * 🔁 क्रम: सधैं सरल English पहिले, त्यसपछि नेपाली। जवाफमा नेपाली अघि परेको भए आवाजमा उल्टाइन्छ।
+ * Order rule: always simple English first, then Nepali. If an answer has Nepali first, it is swapped for speech.
+ */
+function englishFirst(items: { s: string; sec: Section }[]): string[] {
+  // "English" / "नेपाली" शीर्षकका खण्ड (block) जोडा परेमा सटाउने — swap an adjacent Nepali block + English block
+  const blocks: { sec: Section; list: string[] }[] = [];
+  for (const it of items) {
+    const last = blocks[blocks.length - 1];
+    if (last && last.sec === it.sec) last.list.push(it.s);
+    else blocks.push({ sec: it.sec, list: [it.s] });
+  }
+  for (let i = 0; i + 1 < blocks.length; i++) {
+    if (blocks[i].sec === 'ne' && blocks[i + 1].sec === 'en') {
+      [blocks[i], blocks[i + 1]] = [blocks[i + 1], blocks[i]];
+      i++;
+    }
+  }
+  return blocks.flatMap((b) => b.list);
+}
+
 export function markdownToSpeech(markdown: string): SpeakChunk[] {
   markdown = speakBlocks(markdown);
-  const sentences: string[] = [];
+  const sentences: { s: string; sec: Section }[] = [];
+  let section: Section = null;
   // हरेक वाक्य आफ्नै विरामसहित; चिन्ह मात्र भए त्यसको नाम भन्ने — every sentence ends with its own stop,
   // and a sentence made only of symbols is spoken as the symbols' names.
   const add = (raw: string) => {
@@ -152,14 +181,18 @@ export function markdownToSpeech(markdown: string): SpeakChunk[] {
       s = [...new Set(names)].join(', ');
     }
     if (!/[।.!?:]$/.test(s)) s += langOf(s) === 'ne-NP' ? '।' : '.';
-    sentences.push(s);
+    sentences.push({ s, sec: section });
   };
   const lines = markdown.replace(/\r/g, '').split('\n');
   let inCode = false;
   for (const raw of lines) {
     const line = raw.trim();
     if (line.startsWith('```')) {
-      if (!inCode) sentences.push('यहाँ code छ, त्यो screen मा हेर्नुहोस्।');
+      if (!inCode)
+        sentences.push({
+          s: 'यहाँ code छ, त्यो screen मा हेर्नुहोस्।',
+          sec: section,
+        });
       inCode = !inCode;
       continue;
     }
@@ -179,18 +212,40 @@ export function markdownToSpeech(markdown: string): SpeakChunk[] {
       rest.forEach((cell, i) => add(i === 0 ? `${first}: ${cell}` : cell));
       continue;
     }
-    const text = cleanInline(line.replace(/^[-*+]\s+|^\d+[.)]\s+/, ''));
+    let text = cleanInline(line.replace(/^[-*+]\s+|^\d+[.)]\s+/, ''));
     if (!text) continue;
+    // "English: …" / "नेपाली: …" लेबल: खण्ड चिनो राखेर लेबल हटाउने — keep the section, drop the spoken label
+    const labelled = /^(English|नेपाली)\s*[:：]\s*(.+)$/i.exec(text);
+    if (labelled) {
+      section = /^English/i.test(labelled[1]) ? 'en' : 'ne';
+      text = labelled[2];
+    }
     // "नेपाली" / "English" जस्ता शीर्षक मात्र भएका लाइन नपढ्ने — skip bare language headings.
-    if (/^(नेपाली|English|नेपाली\s*\/\s*English)[:.]?$/i.test(text)) continue;
+    if (/^(नेपाली|English|नेपाली\s*\/\s*English)[:.]?$/i.test(text)) {
+      section = /^English/i.test(text)
+        ? 'en'
+        : /^नेपाली[:.]?$/.test(text)
+          ? 'ne'
+          : null;
+      continue;
+    }
     // वाक्य, र "नेपाली — English" वा "नेपाली · English" भाग छुट्याउने ताकि हरेक भाग आफ्नै आवाजमा पढियोस्।
     // Split sentences, and "Nepali — English" / "Nepali · English" halves, so each half gets its own voice.
+    // एउटै लाइनमा "नेपाली — English" भए English पहिले — a single "Nepali — English" line is spoken English first
+    const before = sentences.length;
     for (const s of text.split(/(?<=[।.!?])\s+|\s[—·/]\s/)) add(s);
+    const added = sentences.slice(before);
+    if (
+      added.length === 2 &&
+      langOf(added[0].s) === 'ne-NP' &&
+      langOf(added[1].s) === 'en-US'
+    )
+      sentences.splice(before, 2, added[1], added[0]);
   }
 
   // उही भाषाका सानो वाक्यहरू जोडेर चिल्लो पढाइ — join short same-language sentences for smoother speech.
   const chunks: SpeakChunk[] = [];
-  for (const s of sentences) {
+  for (const s of englishFirst(sentences)) {
     const lang = langOf(s);
     const last = chunks[chunks.length - 1];
     if (last && last.lang === lang && last.text.length + s.length < MAX_CHUNK)
@@ -198,6 +253,9 @@ export function markdownToSpeech(markdown: string): SpeakChunk[] {
     else chunks.push({ text: s, lang });
   }
   for (const c of chunks)
-    c.text = c.lang === 'ne-NP' ? polishNepali(c.text) : polishEnglish(c.text);
+    c.text =
+      c.lang === 'ne-NP'
+        ? polishNepali(c.text)
+        : polishEnglish(c.text.replace(NEPALI_GLOSS, ' '));
   return chunks.filter((c) => c.text.replace(/[।.,\s]/g, ''));
 }

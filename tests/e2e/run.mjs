@@ -467,7 +467,7 @@ function tests(fixture) {
           `(async () => {
           const ev = [];
           const off = window.studio.onSpeakerEvent((e) => { if (e.type !== 'word') ev.push(e.type + (e.voice ? '|' + e.voice : '') + (e.error ? '!' + e.error : '') + (e.stopped ? '(stopped)' : '')); });
-          await window.studio.speak('e2e1', [{ text: 'नमस्ते। म तपाईंको गुरु हुँ।', lang: 'ne-NP' }, { text: 'Hello, I am your tutor.', lang: 'en-US' }], 1, 'female');
+          await window.studio.speak('e2e1', [{ text: 'Hello, I am your tutor.', lang: 'en-US' }, { text: 'नमस्ते। म तपाईंको गुरु हुँ।', lang: 'ne-NP' }], 1, 'female');
           await __t.until(() => ev.some((e) => e.startsWith('end')), 30000);
           await window.studio.speak('e2e2', [{ text: 'यो लामो वाक्य हो जुन बीचमै रोकिनेछ, किनभने हामी stop बटन जाँच्दैछौं।', lang: 'ne-NP' }], 1, 'female');
           const firstEnd = ev.findIndex((x) => x.startsWith('end'));
@@ -481,14 +481,18 @@ function tests(fixture) {
           90000,
         );
         const chunks = r.filter((e) => e.startsWith('chunk'));
-        // पूर्वनिर्धारित Google नेपाली; Google नचले हेमकला — Google Nepali by default, Hemkala if Google fails.
-        if (!/Google नेपाली|हेमकला|Hemkala/.test(chunks[0] ?? ''))
-          throw new Error('Nepali chunk voice: ' + chunks[0]);
+        // पहिले English, अनि नेपाली (Google नेपाली; Google नचले हेमकला) — English first, then Nepali.
         if (
-          !/Natural/.test(chunks[1] ?? '') ||
-          !/English/.test(chunks[1] ?? '')
+          !/Natural/.test(chunks[0] ?? '') ||
+          !/English/.test(chunks[0] ?? '')
         )
-          throw new Error('English chunk voice: ' + chunks[1]);
+          throw new Error(
+            'English chunk voice (should be first): ' + chunks[0],
+          );
+        if (!/Google नेपाली|हेमकला|Hemkala/.test(chunks[1] ?? ''))
+          throw new Error(
+            'Nepali chunk voice (should be second): ' + chunks[1],
+          );
         if (!r.some((e) => e === 'end(stopped)'))
           throw new Error('stop did not end playback: ' + r.join(' , '));
         if (r.some((e) => e.includes('!')))
@@ -525,6 +529,48 @@ function tests(fixture) {
               if (r.speaker < 1)
                 throw new Error('no speaker button under the answer');
               return `${r.ms} ms`;
+            },
+          },
+          {
+            name: 'Guru answer and spoken voice: simple English first, then Nepali',
+            run: async (p) => {
+              const r = await p.eval(
+                `(async () => {
+                await __t.idleGuru();
+                await window.studio.stopSpeaking();
+                await __t.wait(1200);
+                const answer = [...document.querySelectorAll('aside .md-body')].pop()?.innerText ?? '';
+                const firstLatin = answer.search(/[A-Za-z]{3}/);
+                const firstDev = answer.search(/[ऀ-ॿ]{2}/);
+                const ev = [];
+                const off = window.studio.onSpeakerEvent((e) => { if (e.type === 'chunk') ev.push(e.voice ?? ''); });
+                const btn = [...document.querySelectorAll('aside button[aria-label="Read aloud all"]')].pop();
+                if (!btn) return { error: 'no Listen button', answer: answer.slice(0, 80) };
+                btn.click();
+                await __t.until(() => ev.length >= 2, 60000, 250);
+                await window.studio.stopSpeaking();
+                off();
+                return { firstLatin, firstDev, voices: ev.slice(0, 3), head: answer.slice(0, 60) };
+              })()`,
+                120000,
+              );
+              if (r.error) throw new Error(r.error + ' ' + r.answer);
+              if (
+                r.firstLatin < 0 ||
+                r.firstDev < 0 ||
+                r.firstLatin > r.firstDev
+              )
+                throw new Error('text is not English-first: ' + r.head);
+              const nep = (v) => /Google नेपाली|हेमकला|Hemkala/.test(v ?? '');
+              if (nep(r.voices[0]))
+                throw new Error('spoken Nepali first: ' + r.voices.join(' | '));
+              if (!r.voices.slice(1).some(nep))
+                throw new Error(
+                  'no Nepali voice after English: ' + r.voices.join(' | '),
+                );
+              return r.voices
+                .map((v) => v.replace(/Microsoft | Online.*$/g, ''))
+                .join(' → ');
             },
           },
           {

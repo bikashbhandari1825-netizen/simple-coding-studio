@@ -1218,15 +1218,15 @@ function SpeakerBar({
   }[] = [
     { key: 'all', label: tr('🔊 सबै सुन · Listen'), show: true },
     {
-      key: 'ne',
-      label: '🔊 नेपाली',
-      only: 'ne-NP',
-      show: hasNepali && hasEnglish,
-    },
-    {
       key: 'en',
       label: '🔊 English',
       only: 'en-US',
+      show: hasNepali && hasEnglish,
+    },
+    {
+      key: 'ne',
+      label: '🔊 नेपाली',
+      only: 'ne-NP',
       show: hasNepali && hasEnglish,
     },
   ];

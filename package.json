@@ -19,6 +19,7 @@
     "lint": "oxlint && oxfmt --check",
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc --noEmit",
+    "test:unit": "node tests/unit/speech-order.mjs",
     "test:e2e": "node tests/e2e/run.mjs"
   },
   "devDependencies": {
