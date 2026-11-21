@@ -41,6 +41,7 @@ function makeFixture() {
     "void main() {\n  int count = 'five'\n  print(count);\n}\n",
   );
   w('lib/ok.dart', 'int add(int a, int b) => a + b;\n');
+  w('lib/format_me.dart', 'void main(){print( "x" );}\n');
   w('app.js', 'const name = "Bikash";\nconsole.log(nme);\n');
   w('hello.py', 'def greet(name)\n    print("Namaste", name)\n');
   w('bad_import.py', 'print("start")\nimport surely_missing_module_xyz\n');
@@ -290,11 +291,11 @@ function tests(fixture) {
         const r = await p.eval(`(async () => {
           window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, bubbles: true }));
           const qi = await __t.until(() => document.querySelector('[role=dialog][aria-label="Quick open"] input'), 5000);
-          await __t.until(() => !/Indexing|खोज्दै/.test(document.querySelector('[role=dialog]').innerText), 10000);
+          await __t.until(() => !/Indexing|खोज्दै/.test(document.querySelector('[role=dialog]:not(.find-widget)').innerText), 10000);
           Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(qi, 'notes');
           qi.dispatchEvent(new Event('input', { bubbles: true }));
           await __t.wait(250);
-          const top = document.querySelector('[role=dialog] li button')?.innerText;
+          const top = document.querySelector('[role=dialog]:not(.find-widget) li button')?.innerText;
           qi.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
           await __t.wait(1000);
           return { top, tabs: __t.tabs(), dialogGone: !document.querySelector('[role=dialog][aria-label="Quick open"]') };
@@ -324,6 +325,166 @@ function tests(fixture) {
       },
     },
     {
+      name: 'Toolbar: Find, Format, Next error, Search, Undo/Redo buttons',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          const ids = ['tb-search', 'tb-undo', 'tb-redo', 'tb-find', 'tb-format', 'tb-next-error'];
+          return { missing: ids.filter((i) => !document.querySelector('[data-testid=' + i + ']')) };
+        })()`);
+        if (r.missing.length) throw new Error('missing: ' + r.missing);
+      },
+    },
+    {
+      name: 'Find & Replace bar (Ctrl+F) opens from the toolbar and the keyboard',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          await __t.open('app.js');
+          const visible = () => Boolean(document.querySelector('.monaco-editor .find-widget.visible'));
+          document.querySelector('[data-testid=tb-find]').click();
+          const viaButton = Boolean(await __t.until(visible, 4000));
+          const hasReplace = Boolean(document.querySelector('.monaco-editor .find-widget .replace-part'));
+          const hasNav = document.querySelectorAll('.monaco-editor .find-widget .codicon-find-previous-match, .monaco-editor .find-widget .codicon-find-next-match').length;
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          document.querySelector('.monaco-editor .find-widget .codicon-widget-close')?.click();
+          await __t.wait(300);
+          const closed = !visible();
+          // फोकस editor बाहिर हुँदा Ctrl+F — Ctrl+F while the focus is outside the editor
+          document.body.focus();
+          document.activeElement?.blur?.();
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }));
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true }));
+          const viaKey = Boolean(await __t.until(visible, 4000));
+          document.querySelector('.monaco-editor .find-widget .codicon-widget-close')?.click();
+          return { viaButton, hasReplace, hasNav, closed, viaKey };
+        })()`);
+        if (!r.viaButton) throw new Error('toolbar Find did not open the bar');
+        if (!r.hasReplace || r.hasNav < 2)
+          throw new Error(
+            'find bar is missing replace/next/previous: ' + JSON.stringify(r),
+          );
+        if (!r.viaKey) throw new Error('Ctrl+F did not open the bar');
+      },
+    },
+    {
+      name: 'Project search (Ctrl+Shift+F): results jump to file and line',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          const set = (el, v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };
+          const activeTab = () => document.querySelector('main div[title].bg-slate-800')?.innerText.split('\\n')[0];
+          const activeLine = () => document.querySelector('.monaco-editor .active-line-number')?.textContent?.trim();
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', ctrlKey: true, shiftKey: true, bubbles: true }));
+          const input = await __t.until(() => document.querySelector('[data-testid=project-search-input]'), 5000);
+          if (!input) return { error: 'search dialog did not open' };
+          set(input, 'surely_missing_module');
+          await __t.until(() => document.querySelectorAll('[data-testid=search-result]').length > 0, 15000);
+          const rows = [...document.querySelectorAll('[data-testid=search-result]')].map((b) => b.innerText.replace(/\\s+/g, ' '));
+          const none = await (async () => { set(input, 'zzz_no_such_text_zzz'); await __t.until(() => /No matches|केही भेटिएन/.test(document.querySelector('[data-testid=search-results]').innerText), 15000); return /No matches|केही भेटिएन/.test(document.querySelector('[data-testid=search-results]').innerText); })();
+          set(input, 'surely_missing_module');
+          await __t.until(() => document.querySelectorAll('[data-testid=search-result]').length > 0, 15000);
+          document.querySelector('[data-testid=search-result]').click();
+          await __t.wait(900);
+          const first = { tab: activeTab(), line: activeLine(), closed: !document.querySelector('[data-testid=project-search]') };
+          // एउटा फाइलभित्र पनि भेट्ने (नेपाली पाठ) — Nepali text is searchable too
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', ctrlKey: true, shiftKey: true, bubbles: true }));
+          const input2 = await __t.until(() => document.querySelector('[data-testid=project-search-input]'), 5000);
+          set(input2, 'संसार');
+          await __t.until(() => document.querySelectorAll('[data-testid=search-result]').length > 0, 15000);
+          const nepali = [...document.querySelectorAll('[data-testid=search-result]')].map((b) => b.innerText.replace(/\\s+/g, ' '));
+          document.querySelector('[data-testid=search-result]').click();
+          await __t.wait(900);
+          return { rows, none, first, nepali, second: { tab: activeTab(), line: activeLine() } };
+        })()`);
+        if (r.error) throw new Error(r.error);
+        if (!r.rows.some((x) => x.includes('bad_import.py:2')))
+          throw new Error('wrong results: ' + JSON.stringify(r.rows));
+        if (!r.none) throw new Error('no "No matches" message');
+        if (
+          r.first.tab !== 'bad_import.py' ||
+          r.first.line !== '2' ||
+          !r.first.closed
+        )
+          throw new Error('did not jump: ' + JSON.stringify(r.first));
+        if (!r.nepali.some((x) => x.includes('notes.md:2')))
+          throw new Error('Nepali search failed: ' + JSON.stringify(r.nepali));
+        if (r.second.tab !== 'notes.md' || r.second.line !== '2')
+          throw new Error(
+            'did not jump to Nepali hit: ' + JSON.stringify(r.second),
+          );
+        return r.rows[0];
+      },
+    },
+    {
+      name: 'Problems panel: file:line rows, click jumps, next-error button',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          const activeTab = () => document.querySelector('main div[title].bg-slate-800')?.innerText.split('\\n')[0];
+          const activeLine = () => document.querySelector('.monaco-editor .active-line-number')?.textContent?.trim();
+          // सबै खुला फाइलका गल्ती तयार होऊन् — wait until the error files have their problems
+          for (const n of ['app.js', 'hello.py', 'main.dart']) await __t.open(n);
+          await __t.until(() => /^⛔\\s*[1-9]/.test(document.querySelector('[data-testid=problems-toggle]')?.innerText ?? ''), 30000);
+          document.querySelector('[data-testid=problems-toggle]').click();
+          const panel = await __t.until(() => document.querySelector('[data-testid=problems-panel]'), 4000);
+          if (!panel) return { error: 'panel did not open' };
+          const rows = () => [...document.querySelectorAll('[data-testid=problem-row]')];
+          await __t.until(() => rows().some((x) => /hello\\.py:\\d+/.test(x.innerText)) && rows().some((x) => /main\\.dart:\\d+/.test(x.innerText)), 30000);
+          const texts = rows().map((x) => x.innerText.replace(/\\s+/g, ' '));
+          const hasFix = rows().every((x) => x.querySelector('[data-testid=problem-fix]'));
+          // एउटा फाइलका गल्तीमा क्लिक — click a row in another file
+          await __t.open('app.js');
+          const pyRow = rows().find((x) => /hello\\.py:/.test(x.innerText));
+          const want = pyRow.innerText.match(/hello\\.py:(\\d+)/)[1];
+          pyRow.querySelector('button').click();
+          await __t.wait(900);
+          const jumped = { tab: activeTab(), line: activeLine(), want };
+          // "Next error" बटन — the toolbar button moves to another error
+          const before = { tab: activeTab(), line: activeLine() };
+          document.querySelector('[data-testid=tb-next-error]').click();
+          await __t.wait(900);
+          const next = { tab: activeTab(), line: activeLine() };
+          document.querySelector('[data-testid=problems-toggle]').click();
+          await __t.wait(200);
+          return { texts, hasFix, jumped, before, next, closed: !document.querySelector('[data-testid=problems-panel]') };
+        })()`);
+        if (r.error) throw new Error(r.error);
+        if (!r.hasFix) throw new Error('a row has no Fix with Guru button');
+        if (r.jumped.tab !== 'hello.py' || r.jumped.line !== r.jumped.want)
+          throw new Error('click did not jump: ' + JSON.stringify(r.jumped));
+        if (r.before.tab === r.next.tab && r.before.line === r.next.line)
+          throw new Error('Next error did not move: ' + JSON.stringify(r));
+        if (!r.closed) throw new Error('panel did not close');
+        return r.texts.slice(0, 3).join(' || ');
+      },
+    },
+    {
+      name: 'Format code (Dart) + Undo restores it',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          const code = () => document.querySelector('.monaco-editor .view-lines')?.innerText.replace(/\\u00a0/g, ' ') ?? '';
+          await __t.open('format_me.dart');
+          await __t.until(() => /print/.test(code()), 5000);
+          const before = code();
+          document.querySelector('[data-testid=tb-format]').click();
+          await __t.until(() => code() !== before, 30000);
+          const formatted = code();
+          const toast = await __t.until(() => __t.toasts.find((t) => /Format|Formatted|मिलाऊ|भयो/.test(t) && /Ctrl\\+Z/.test(t)), 3000);
+          document.querySelector('[data-testid=tb-undo]').click();
+          await __t.until(() => code() === before, 5000);
+          const undone = code();
+          document.querySelector('[data-testid=tb-redo]').click();
+          await __t.until(() => code() === formatted, 5000);
+          return { before, formatted, undone, toast: Boolean(toast), redone: code() === formatted };
+        })()`);
+        if (r.formatted === r.before)
+          throw new Error('format changed nothing: ' + r.formatted);
+        if (!/void main\(\) \{/.test(r.formatted))
+          throw new Error('not formatted: ' + r.formatted);
+        if (r.undone !== r.before)
+          throw new Error('undo did not restore the text');
+        if (!r.redone) throw new Error('redo did not re-apply');
+        if (!r.toast) throw new Error('no format toast');
+      },
+    },
+    {
       name: 'New Flutter app: starter picker (3 templates)',
       run: async (p) => {
         const r = await p.eval(`(async () => {
@@ -337,14 +498,14 @@ function tests(fixture) {
           radios.find((x) => x.dataset.template === 'map').click();
           await __t.wait(150);
           const after = [...dlg.querySelectorAll('[role=radio]')].map((x) => x.getAttribute('aria-checked'));
-          const input = document.querySelector('[role=dialog] input');
+          const input = document.querySelector('[role=dialog]:not(.find-widget) input');
           const hasName = Boolean(input);
           const prefilled = input.value;
           const setName = async (v) => {
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, v);
             input.dispatchEvent(new Event('input', { bubbles: true }));
             await __t.wait(150);
-            const dlg2 = document.querySelector('[role=dialog]');
+            const dlg2 = document.querySelector('[role=dialog]:not(.find-widget)');
             return { note: dlg2.querySelector('[data-testid=folder-note]')?.innerText, error: /text-rose-400/.test(dlg2.innerHTML), createDisabled: [...dlg2.querySelectorAll('button')].find((b) => b.textContent.includes('बनाऊ'))?.disabled };
           };
           const messy = await setName('My App Now!');
@@ -352,7 +513,7 @@ function tests(fixture) {
           const nepali = await setName('नमस्ते');
           window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
           await __t.wait(250);
-          return { ids, before, after, hasName, prefilled, messy, blank, nepali, closed: !document.querySelector('[role=dialog]') };
+          return { ids, before, after, hasName, prefilled, messy, blank, nepali, closed: !document.querySelector('[role=dialog]:not(.find-widget)') };
         })()`);
         if (r.error) throw new Error(r.error);
         if (r.ids.join() !== 'basic,firebase,map')
@@ -574,6 +735,33 @@ function tests(fixture) {
             },
           },
           {
+            name: 'Problems panel: "Fix with Guru" jumps to the file and asks Guru',
+            run: async (p) => {
+              const r = await p.eval(
+                `(async () => {
+                await __t.idleGuru();
+                await __t.open('hello.py');
+                await __t.until(() => __t.squiggles() > 0, 20000);
+                await __t.open('app.js');
+                document.querySelector('[data-testid=problems-toggle]').click();
+                await __t.until(() => [...document.querySelectorAll('[data-testid=problem-row]')].some((x) => /hello\\.py:/.test(x.innerText)), 20000);
+                const row = [...document.querySelectorAll('[data-testid=problem-row]')].find((x) => /hello\\.py:/.test(x.innerText));
+                row.querySelector('[data-testid=problem-fix]').click();
+                await __t.wait(1500);
+                const tab = document.querySelector('main div[title].bg-slate-800')?.innerText.split('\\n')[0];
+                const asked = await __t.until(() => /Fix with Guru: hello\\.py:\\d+/.test([...document.querySelectorAll('aside')].pop()?.innerText ?? ''), 90000, 250);
+                await __t.idleGuru();
+                document.querySelector('[data-testid=problems-toggle]').click();
+                return { tab, asked: Boolean(asked) };
+              })()`,
+                200000,
+              );
+              if (r.tab !== 'hello.py')
+                throw new Error('did not open the file: ' + r.tab);
+              if (!r.asked) throw new Error('Guru was not asked');
+            },
+          },
+          {
             name: 'One-click fix: Guru fix → diff preview → apply to file',
             run: async (p) => {
               const r = await p.eval(
@@ -587,7 +775,7 @@ function tests(fixture) {
                 const view = await __t.until(() => document.querySelector('[data-testid=diff-view]'), 150000, 300);
                 if (!view) return { error: 'diff dialog never opened' };
                 const diffText = view.innerText;
-                const apply = [...document.querySelectorAll('[role=dialog] button')].find((b) => b.textContent.includes('✅'));
+                const apply = [...document.querySelectorAll('[role=dialog]:not(.find-widget) button')].find((b) => b.textContent.includes('✅'));
                 apply.click();
                 await __t.wait(800);
                 const after = code();

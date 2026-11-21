@@ -2,7 +2,12 @@ import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type { Dirent } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { FileEntry, ProjectInfo, ProjectKind } from '../shared/types';
+import type {
+  FileEntry,
+  ProjectInfo,
+  ProjectKind,
+  SearchResult,
+} from '../shared/types';
 
 // प्रयोगकर्ताले आफैं खोलेका फोल्डरहरू मात्र। UI ले यीभन्दा बाहिरका फाइल छुन पाउँदैन।
 // Only folders the user explicitly opened. The UI may not touch files outside them.
@@ -34,6 +39,12 @@ const LIST_SKIP = new Set([
   'Saved',
   'DerivedDataCache',
 ]);
+
+/** Project खोजमा बढीमा यति नतिजा / ठूलो फाइल छोड्ने — search result and file-size limits. */
+const SEARCH_MAX_MATCHES = 500;
+const SEARCH_MAX_FILE_BYTES = 1024 * 1024;
+const SEARCH_SKIP_EXT =
+  /\.(png|jpe?g|gif|webp|ico|bmp|pdf|zip|gz|7z|rar|jar|exe|dll|so|dylib|class|ttf|otf|woff2?|mp[34]|wav|ogg|mov|avi|lock|bin|keystore|jks)$/i;
 
 /** खोलिएको फाइल कुन encoding मा थियो (save गर्दा उही राख्न) — each file's encoding, kept when saving. */
 type Encoding = 'utf8' | 'utf8-bom' | 'utf16le' | 'utf16be';
@@ -317,6 +328,92 @@ export function registerFileSystemHandlers(): void {
         }
       }
       return { files, truncated: files.length >= MAX_LIST_FILES };
+    },
+  );
+
+  // Ctrl+Shift+F: project भरका फाइलमा पाठ खोज्ने — search text across the project's files.
+  ipcMain.handle(
+    'fs:search',
+    async (
+      _event,
+      rootPath: string,
+      query: string,
+      opts?: { caseSensitive?: boolean; wholeWord?: boolean; regex?: boolean },
+    ): Promise<SearchResult> => {
+      const root = assertInsideProject(rootPath);
+      const result: SearchResult = {
+        matches: [],
+        files: 0,
+        truncated: false,
+        error: undefined,
+      };
+      if (typeof query !== 'string' || !query) return result;
+      let re: RegExp;
+      try {
+        const body = opts?.regex
+          ? query
+          : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        re = new RegExp(
+          opts?.wholeWord ? `\\b(?:${body})\\b` : body,
+          opts?.caseSensitive ? 'g' : 'gi',
+        );
+      } catch {
+        result.error = 'यो खोज ढाँचा मिलेन · This search pattern is not valid';
+        return result;
+      }
+      const queue = [root];
+      let scanned = 0;
+      while (queue.length && !result.truncated && scanned < MAX_LIST_FILES) {
+        const dir = queue.shift() as string;
+        let entries: Dirent[];
+        try {
+          entries = await fs.readdir(dir, { withFileTypes: true });
+        } catch {
+          continue;
+        }
+        for (const e of entries) {
+          if (HIDDEN.has(e.name)) continue;
+          const p = path.join(dir, e.name);
+          if (e.isDirectory()) {
+            if (!LIST_SKIP.has(e.name)) queue.push(p);
+            continue;
+          }
+          if (!e.isFile() || SEARCH_SKIP_EXT.test(e.name)) continue;
+          scanned++;
+          let text: string;
+          try {
+            const st = await fs.stat(p);
+            if (st.size > SEARCH_MAX_FILE_BYTES) continue;
+            const buf = await fs.readFile(p);
+            if (buf.subarray(0, 8192).includes(0)) continue; // binary
+            text = buf.toString('utf8');
+          } catch {
+            continue;
+          }
+          let hit = false;
+          const lines = text.split(/\r?\n/);
+          for (let i = 0; i < lines.length; i++) {
+            re.lastIndex = 0;
+            const m = re.exec(lines[i]);
+            if (!m) continue;
+            hit = true;
+            result.matches.push({
+              file: path.relative(root, p),
+              line: i + 1,
+              column: m.index + 1,
+              length: Math.max(1, m[0].length),
+              text: lines[i].trim().slice(0, 240),
+            });
+            if (result.matches.length >= SEARCH_MAX_MATCHES) {
+              result.truncated = true;
+              break;
+            }
+          }
+          if (hit) result.files++;
+          if (result.truncated) break;
+        }
+      }
+      return result;
     },
   );
 

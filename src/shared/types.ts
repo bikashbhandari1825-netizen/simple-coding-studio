@@ -162,6 +162,23 @@ export interface ClaudeStatus {
   authMethod?: string;
 }
 
+/** Project खोजको एउटा नतिजा — one match from a project-wide search. */
+export interface SearchMatch {
+  /** project root देखिको सापेक्ष बाटो — path relative to the project root */
+  file: string;
+  line: number;
+  column: number;
+  length: number;
+  text: string;
+}
+export interface SearchResult {
+  matches: SearchMatch[];
+  /** कति फाइलमा भेटियो — number of files with a match */
+  files: number;
+  truncated: boolean;
+  error?: string;
+}
+
 /** UI ले प्रयोग गर्न पाउने सुरक्षित API — The safe API the UI can call (window.studio). */
 export interface StudioApi {
   // Files
@@ -175,6 +192,14 @@ export interface StudioApi {
   listAllFiles(
     rootPath: string,
   ): Promise<{ files: string[]; truncated: boolean }>;
+  /** Ctrl+Shift+F: project भरका फाइलमा खोज — search text across the project. */
+  searchInProject(
+    rootPath: string,
+    query: string,
+    opts?: { caseSensitive?: boolean; wholeWord?: boolean; regex?: boolean },
+  ): Promise<SearchResult>;
+  /** Dart को आधिकारिक Format — formatted text, or null when unavailable. */
+  diagFormat(filePath: string, text: string): Promise<string | null>;
   writeFile(filePath: string, content: string): Promise<void>;
   createFile(dirPath: string, name: string): Promise<string>;
   createFolder(dirPath: string, name: string): Promise<string>;

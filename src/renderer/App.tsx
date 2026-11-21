@@ -21,6 +21,12 @@ import { TutorPanel, type TutorRequest } from './components/TutorPanel';
 import { Welcome } from './components/Welcome';
 import { QuickOpen } from './components/QuickOpen';
 import {
+  EMPTY_SEARCH,
+  SearchDialog,
+  type SearchMemory,
+} from './components/SearchDialog';
+import { ProblemsPanel, type Problem } from './components/ProblemsPanel';
+import {
   baseName,
   errorText,
   isProbablyBinary,
@@ -46,6 +52,7 @@ type DialogKind =
   | 'newFlutter'
   | 'settings'
   | 'quickOpen'
+  | 'search'
   | null;
 
 const KIND_LABEL: Record<ProjectInfo['kind'], string> = {
@@ -104,6 +111,12 @@ export default function App() {
   } | null>(null);
   const [git, setGit] = useState<GitStatusInfo>({ isRepo: false });
   const [dragging, setDragging] = useState(false);
+  // 🔎 Project खोज र 🧯 समस्या सूची — project search and the Problems list
+  const [searchMemory, setSearchMemory] = useState<SearchMemory>(EMPTY_SEARCH);
+  const [searchSeed, setSearchSeed] = useState('');
+  const [problems, setProblems] = useState<Problem[]>([]);
+  const [problemsOpen, setProblemsOpen] = useState(false);
+  const problemCursor = useRef(-1);
 
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const lineId = useRef(0);
@@ -432,10 +445,126 @@ export default function App() {
         e.preventDefault();
         setDialog('quickOpen');
       }
+      // Ctrl+Shift+F = सबै फाइलमा खोज — project-wide search.
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === 'f' &&
+        project
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        openProjectSearch();
+        return;
+      }
+      // Ctrl+F: editor बाहिर फोकस भए पनि यही फाइलमा खोज्ने — Find in the file even when focus is outside the editor.
+      const inField = (e.target as HTMLElement | null)?.closest?.(
+        '.monaco-editor, input, textarea, select, [role="dialog"]',
+      );
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        !e.shiftKey &&
+        !e.altKey &&
+        (e.key.toLowerCase() === 'f' || e.key.toLowerCase() === 'h') &&
+        editorRef.current &&
+        activePath &&
+        !inField
+      ) {
+        e.preventDefault();
+        editorRef.current.focus();
+        void editorRef.current
+          .getAction(
+            e.key.toLowerCase() === 'h'
+              ? 'editor.action.startFindReplace'
+              : 'actions.find',
+          )
+          ?.run();
+      }
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [saveActive, project]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- openProjectSearch only reads refs and setters
+  }, [saveActive, project, activePath]);
+
+  // ---------- 🔎 Find · 🔍 Project search · ✨ Format · ⛔ Jump to error ----------
+  const openProjectSearch = () => {
+    if (!project) {
+      showError(tr('पहिले project खोल्नुहोस् · Open a project first'));
+      return;
+    }
+    const editor = editorRef.current;
+    const sel = editor?.getSelection();
+    const picked =
+      editor && sel && !sel.isEmpty()
+        ? (editor.getModel()?.getValueInRange(sel) ?? '')
+        : '';
+    // एउटै लाइनको छानिएको शब्द मात्र खोजमा हाल्ने — only a single-line selection seeds the search
+    setSearchSeed(picked && !picked.includes('\n') ? picked.slice(0, 120) : '');
+    setDialog('search');
+  };
+  const runEditorAction = (id: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    void editor.getAction(id)?.run();
+  };
+  const undoEdit = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    editor.trigger('toolbar', 'undo', null);
+  };
+  const redoEdit = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    editor.trigger('toolbar', 'redo', null);
+  };
+  const formatCode = async () => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!editor || !model || !activeTab) return;
+    const before = model.getValue();
+    try {
+      if (/\.dart$/i.test(activeTab.path)) {
+        const formatted = await window.studio.diagFormat(
+          activeTab.path,
+          before,
+        );
+        if (formatted === null) {
+          showError(
+            tr(
+              'Dart formatter तयार भएन; Flutter install जाँच्नुहोस् · The Dart formatter is not ready; check that Flutter is installed',
+            ),
+          );
+          return;
+        }
+        // Undo (Ctrl+Z) ले फर्काउन मिल्ने गरी — as one edit, so Ctrl+Z undoes it
+        if (formatted !== before && model.getValue() === before)
+          editor.executeEdits('format', [
+            { range: model.getFullModelRange(), text: formatted },
+          ]);
+      } else {
+        const action = editor.getAction('editor.action.formatDocument');
+        if (!action?.isSupported()) {
+          showError(
+            tr(
+              'यो प्रकारको फाइलमा Format उपलब्ध छैन · Format is not available for this file type',
+            ),
+          );
+          return;
+        }
+        await action.run();
+      }
+      showToast(
+        model.getValue() === before
+          ? tr('✨ पहिले नै राम्रो छ · Already tidy')
+          : tr('✨ Format भयो — Ctrl+Z ले फर्काउँछ · Formatted — Ctrl+Z undoes'),
+      );
+    } catch (err) {
+      showError(errorText(err));
+    }
+  };
 
   // ---------- Run ----------
   const runSelected = (id = presetId) => runPreset(id);
@@ -524,6 +653,10 @@ export default function App() {
       runOutput: output ? output.slice(-12_000) : undefined,
     };
   }, [activeTab, consoleLines, project]);
+
+  // सधैं पछिल्लो context (जम्पपछि प्रयोग हुने) — always the latest context, used right after a jump
+  const getContextRef = useRef(getContext);
+  getContextRef.current = getContext;
 
   const askGuruAboutOutput = () => {
     setPendingTutor({
@@ -665,7 +798,25 @@ export default function App() {
     path: string;
     line: number;
     column: number;
+    /** खोजको नतिजा भए शब्द छान्ने लम्बाइ — length to select when jumping to a search match */
+    length?: number;
   } | null>(null);
+  // जम्प पूरा भएपछि गर्ने काम (जस्तै "Guru सँग ठीक गर") — runs once a jump has landed (e.g. "Fix with Guru")
+  const afterJump = useRef<(() => void) | null>(null);
+
+  /** कुनै फाइलको लाइनमा जाने (फाइल बन्द भए खोलेर) — jump to a line, opening the file first if needed. */
+  const jumpTo = async (
+    full: string,
+    line: number,
+    column = 1,
+    length?: number,
+  ) => {
+    const existing = tabs.find((t) => samePath(t.path, full));
+    if (existing) setActivePath(existing.path);
+    else
+      await openFile({ name: baseName(full), path: full, isDirectory: false });
+    setReveal({ path: existing?.path ?? full, line, column, length });
+  };
 
   const resolveTipPath = useCallback(
     (file: string) => {
@@ -703,12 +854,20 @@ export default function App() {
       if (!editor || !model) return;
       const line = Math.min(Math.max(1, reveal.line), model.getLineCount());
       editor.revealLineInCenter(line);
-      editor.setPosition({
-        lineNumber: line,
-        column: Math.max(1, reveal.column),
-      });
+      const column = Math.max(1, reveal.column);
+      if (reveal.length)
+        editor.setSelection({
+          startLineNumber: line,
+          startColumn: column,
+          endLineNumber: line,
+          endColumn: column + reveal.length,
+        });
+      else editor.setPosition({ lineNumber: line, column });
       editor.focus();
       setReveal(null);
+      const next = afterJump.current;
+      afterJump.current = null;
+      next?.();
     }, 80);
     return () => clearTimeout(timer);
   }, [reveal, activePath]);
@@ -884,6 +1043,106 @@ export default function App() {
       sub.dispose();
     };
   }, [activePath, tabs.length]);
+
+  // 🧯 सबै खुला फाइलका गल्ती र चेतावनी (फाइल नाम + लाइनसहित) — errors and warnings of every open file, with file name and line.
+  useEffect(() => {
+    const read = () => {
+      const list: Problem[] = [];
+      for (const tab of tabs) {
+        const model = monaco.editor.getModel(monaco.Uri.parse(tab.path));
+        if (!model) continue;
+        const seen = new Set<string>();
+        for (const m of monaco.editor.getModelMarkers({
+          resource: model.uri,
+        })) {
+          const severity =
+            m.severity === monaco.MarkerSeverity.Error
+              ? 'error'
+              : m.severity === monaco.MarkerSeverity.Warning
+                ? 'warning'
+                : null;
+          if (!severity) continue;
+          // एउटै गल्ती दुई जाँचबाट आए एकपटक मात्र — the same problem from two checkers is shown once.
+          const key = `${m.startLineNumber}|${m.message.split('\n')[0]}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          list.push({
+            path: tab.path,
+            name: tab.name,
+            line: m.startLineNumber,
+            column: m.startColumn,
+            severity,
+            message: m.message.split('\n')[0],
+            source: m.source ?? m.owner,
+          });
+        }
+      }
+      // गल्ती पहिले, त्यसपछि चेतावनी; फाइल र लाइन क्रममा — errors first, then warnings, by file and line
+      list.sort(
+        (a, b) =>
+          Number(a.severity === 'warning') - Number(b.severity === 'warning') ||
+          a.name.localeCompare(b.name) ||
+          a.line - b.line,
+      );
+      setProblems((prev) =>
+        JSON.stringify(prev) === JSON.stringify(list) ? prev : list,
+      );
+    };
+    read();
+    const sub = monaco.editor.onDidChangeMarkers(read);
+    return () => sub.dispose();
+  }, [tabs]);
+
+  const jumpToProblem = (p: Problem) => {
+    void jumpTo(p.path, p.line, p.column);
+  };
+  /** F8 जस्तै: अर्को गल्तीमा (फाइल फरक भए त्यही खोलेर) — jump to the next error, opening its file if needed. */
+  const jumpToNextError = () => {
+    const errors = problems.filter((p) => p.severity === 'error');
+    const list = errors.length ? errors : problems;
+    if (list.length === 0) {
+      showToast(tr('✅ कुनै गल्ती छैन · No errors to jump to'));
+      return;
+    }
+    // अहिलेको कर्सरपछिको पहिलो गल्ती — the first problem after the cursor
+    const pos = editorRef.current?.getPosition();
+    const here = activePath ?? '';
+    let idx = list.findIndex(
+      (p) =>
+        samePath(p.path, here) &&
+        pos &&
+        (p.line > pos.lineNumber ||
+          (p.line === pos.lineNumber && p.column > pos.column)),
+    );
+    if (idx < 0)
+      idx =
+        problemCursor.current + 1 < list.length ? problemCursor.current + 1 : 0;
+    problemCursor.current = idx;
+    jumpToProblem(list[idx]);
+    showToast(
+      tr(
+        `⛔ गल्ती ${idx + 1}/${list.length} — ${list[idx].name}:${list[idx].line} · Error ${idx + 1} of ${list.length}`,
+      ),
+    );
+  };
+  /** 🧑‍🏫 त्यही गल्ती Guru लाई ठीक गर्न दिने — send exactly this problem to Guru to explain and fix. */
+  const fixProblemWithGuru = (p: Problem) => {
+    const ask = () =>
+      setPendingTutor({
+        mode: 'fix',
+        label: `${tr('🧑‍🏫 Guru सँग ठीक गर · Fix with Guru')}: ${p.name}:${p.line}`,
+        prompt: `Fix this ${p.severity} in ${p.name}, line ${p.line}: ${p.message}. Explain it simply, then give the corrected code.`,
+        context: getContextRef.current(),
+      });
+    if (activePath && samePath(activePath, p.path)) {
+      jumpToProblem(p);
+      ask();
+    } else {
+      // फाइल खुलेपछि मात्र सन्दर्भ लिने — take the context only once the file is showing
+      afterJump.current = ask;
+      jumpToProblem(p);
+    }
+  };
 
   // Editor मा error भएको लाइनमा रातो रेखा — red squiggles on the error lines in the editor.
   useEffect(() => {
@@ -1063,6 +1322,76 @@ export default function App() {
             <span className="tb-label">{tr('फाइल खोज · Find file')}</span>
           </button>
         )}
+        {project && (
+          <button
+            className="btn-ghost"
+            data-testid="tb-search"
+            title="Ctrl+Shift+F"
+            onClick={openProjectSearch}
+          >
+            <span aria-hidden="true">🔎</span>{' '}
+            <span className="tb-label">{tr('सबैमा खोज · Search all')}</span>
+          </button>
+        )}
+        {activeTab && (
+          <div
+            className="flex items-center gap-0.5"
+            data-testid="edit-tools"
+            role="group"
+            aria-label="Editor tools"
+          >
+            <button
+              className="btn-ghost"
+              data-testid="tb-undo"
+              title={tr('पछाडि · Undo (Ctrl+Z)')}
+              aria-label="Undo"
+              onClick={undoEdit}
+            >
+              <span aria-hidden="true">↶</span>
+            </button>
+            <button
+              className="btn-ghost"
+              data-testid="tb-redo"
+              title={tr('अगाडि · Redo (Ctrl+Y)')}
+              aria-label="Redo"
+              onClick={redoEdit}
+            >
+              <span aria-hidden="true">↷</span>
+            </button>
+            <button
+              className="btn-ghost"
+              data-testid="tb-find"
+              title={tr('यो फाइलमा खोज/बदल · Find & Replace (Ctrl+F)')}
+              onClick={() => runEditorAction('actions.find')}
+            >
+              <span aria-hidden="true">🔍</span>{' '}
+              <span className="tb-label">{tr('खोज · Find')}</span>
+            </button>
+            <button
+              className="btn-ghost"
+              data-testid="tb-format"
+              title={tr('कोड मिलाऊ · Format code (Shift+Alt+F)')}
+              onClick={() => void formatCode()}
+            >
+              <span aria-hidden="true">✨</span>{' '}
+              <span className="tb-label">{tr('मिलाऊ · Format')}</span>
+            </button>
+            <button
+              className="btn-ghost"
+              data-testid="tb-next-error"
+              title={tr('अर्को गल्तीमा जाऊ · Jump to next error')}
+              onClick={jumpToNextError}
+            >
+              <span aria-hidden="true">⛔</span>{' '}
+              <span className="tb-label">{tr('गल्तीमा जाऊ · Next error')}</span>
+              {problems.some((p) => p.severity === 'error') && (
+                <span className="ml-1 rounded-full bg-rose-600 px-1.5 text-[10px] text-white">
+                  {problems.filter((p) => p.severity === 'error').length}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
         <div className="flex-1" />
         {project && presets.length > 0 && (
           <div className="flex items-center gap-1">
@@ -1157,6 +1486,14 @@ export default function App() {
                   }}
                 />
               </div>
+              {problemsOpen && (
+                <ProblemsPanel
+                  problems={problems}
+                  onJump={jumpToProblem}
+                  onFix={fixProblemWithGuru}
+                  onClose={() => setProblemsOpen(false)}
+                />
+              )}
               {consoleOpen ? (
                 <div className="h-56 shrink-0 border-t border-slate-700">
                   <ConsolePanel
@@ -1346,15 +1683,24 @@ export default function App() {
           </>
         )}
         <div className="min-w-0 flex-1" />
-        {activeTab &&
-          activeErrors.path === activeTab.path &&
-          activeErrors.list.length > 0 && (
-            <span className="text-rose-400">
-              {tr(
-                `⛔ ${activeErrors.list.length} गल्ती · ${activeErrors.list.length} error(s)`,
-              )}
-            </span>
-          )}
+        {project && (
+          <button
+            data-testid="problems-toggle"
+            title={tr('समस्या सूची खोल/बन्द · Show or hide Problems')}
+            onClick={() => setProblemsOpen((o) => !o)}
+            className={`rounded px-1.5 hover:bg-slate-700 ${
+              problems.some((p) => p.severity === 'error')
+                ? 'text-rose-400'
+                : problems.length
+                  ? 'text-amber-300'
+                  : 'text-slate-400'
+            }`}
+          >
+            {tr(
+              `⛔ ${problems.filter((p) => p.severity === 'error').length} गल्ती · errors  ⚠ ${problems.filter((p) => p.severity === 'warning').length}`,
+            )}
+          </button>
+        )}
         {activeTab && <span>{activeTab.language}</span>}
         <span>
           {account.status?.loggedIn
@@ -1433,6 +1779,25 @@ export default function App() {
               path: full,
               isDirectory: false,
             });
+          }}
+        />
+      )}
+      {dialog === 'search' && project && (
+        <SearchDialog
+          rootPath={project.rootPath}
+          initialQuery={searchSeed}
+          memory={searchMemory}
+          onRemember={setSearchMemory}
+          onClose={() => {
+            setDialog(null);
+            editorRef.current?.focus();
+          }}
+          onOpen={(rel, line, column) => {
+            setDialog(null);
+            const length = searchMemory.regex
+              ? undefined
+              : searchMemory.query.length || undefined;
+            void jumpTo(`${project.rootPath}\\${rel}`, line, column, length);
           }}
         />
       )}

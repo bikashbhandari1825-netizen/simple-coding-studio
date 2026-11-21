@@ -295,6 +295,45 @@ class DartServer {
       }));
   }
 
+  /** ✨ Format Code: Dart को आधिकारिक formatter (LSP) — the official Dart formatter; returns the formatted text or null. */
+  async format(file: string, text: string): Promise<string | null> {
+    await this.change(file, text);
+    const edits = (await this.request(
+      'textDocument/formatting',
+      {
+        textDocument: { uri: pathToFileURL(file).href },
+        options: { tabSize: 2, insertSpaces: true },
+      },
+      10000,
+    )) as
+      | {
+          range: {
+            start: { line: number; character: number };
+            end: { line: number; character: number };
+          };
+          newText: string;
+        }[]
+      | null;
+    if (!Array.isArray(edits)) return null;
+    // (line, character) → offset
+    const starts = [0];
+    for (let i = 0; i < text.length; i++)
+      if (text[i] === '\n') starts.push(i + 1);
+    const at = (p: { line: number; character: number }) =>
+      Math.min(text.length, (starts[p.line] ?? text.length) + p.character);
+    let out = text;
+    // पछाडिबाट लगाउँदा अघिका offset नबिग्रिने — apply from the end so earlier offsets stay valid
+    for (const e of [...edits].sort(
+      (a, b) => at(b.range.start) - at(a.range.start),
+    )) {
+      out =
+        out.slice(0, at(e.range.start)) +
+        e.newText +
+        out.slice(at(e.range.end));
+    }
+    return out;
+  }
+
   /** 🔧 Quick fix: गल्ती सच्याउने तयारी सुझाव (यही फाइलका edit मात्र) — quick fixes (edits to this file only). */
   async codeActions(
     file: string,
@@ -538,6 +577,17 @@ export function registerDiagnosticsHandlers(): void {
       const server = dartServerFor(file);
       if (!server || typeof text !== 'string') return [];
       return server.complete(file, text, Number(line), Number(column));
+    },
+  );
+
+  ipcMain.handle(
+    'diag:format',
+    async (_e, filePath: string, text: string): Promise<string | null> => {
+      const file = assertInsideProject(filePath);
+      if (path.extname(file).toLowerCase() !== '.dart') return null;
+      const server = dartServerFor(file);
+      if (!server || typeof text !== 'string') return null;
+      return server.format(file, text);
     },
   );
 
