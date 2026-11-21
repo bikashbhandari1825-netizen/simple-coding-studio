@@ -27,6 +27,14 @@ import {
 } from './components/SearchDialog';
 import { ProblemsPanel, type Problem } from './components/ProblemsPanel';
 import { findWrongFile } from './lib/wrongFile';
+import { ErrorGuide } from './components/ErrorGuide';
+import {
+  firstGuide,
+  neededFile,
+  neededPaths,
+  norm,
+  type GuideContext,
+} from './lib/errorGuide';
 import { GuruCodeBox, type NumberedBlock } from './components/GuruCodeBox';
 import type { CodeBlock } from './lib/splitCode';
 import {
@@ -1081,6 +1089,198 @@ export default function App() {
     }
   }, [tabs, guruCode]);
 
+  // 🧭 गल्ती मार्गदर्शक: package / import / class को गल्ती आउँदा कारण, फाइल, चरण र तीर (AI बिना)
+  // Error guide: reason, file, steps and an arrow for package / import / class errors (no AI)
+  const [activeErrors, setActiveErrors] = useState<{
+    path: string | null;
+    list: { line: number; column: number; message: string; source: string }[];
+  }>({ path: null, list: [] });
+  const [guideDismissed, setGuideDismissed] = useState<string[]>([]);
+  const [projectName, setProjectName] = useState<string | undefined>();
+  const [existsMap, setExistsMap] = useState<Record<string, boolean>>({});
+  const guideSeen = useRef<Record<string, boolean>>({});
+  const guideRoot = project?.rootPath ?? '';
+  useEffect(() => {
+    if (!guideRoot) {
+      setProjectName(undefined);
+      return;
+    }
+    let live = true;
+    window.studio
+      .readFile(guideRoot + '/pubspec.yaml')
+      .then((t) => {
+        if (live) setProjectName(/^name:\s*([\w]+)/m.exec(t)?.[1]);
+      })
+      .catch(() => live && setProjectName(undefined));
+    return () => {
+      live = false;
+    };
+  }, [guideRoot, treeVersion]);
+  const guideCtx = useMemo<GuideContext | null>(() => {
+    if (!guideRoot || !activeTab) return null;
+    const texts = new Map(
+      tabs.map((t) => [norm(t.path).toLowerCase(), t.content]),
+    );
+    const names = new Set<string>();
+    for (const t of tabs)
+      for (const m of t.content.matchAll(/^\s*class\s+([A-Za-z_]\w*)/gm))
+        names.add(m[1]);
+    for (const b of guruCode)
+      for (const m of b.code.matchAll(/^\s*class\s+([A-Za-z_]\w*)/gm))
+        names.add(m[1]);
+    return {
+      rootPath: guideRoot,
+      filePath: activeTab.path,
+      projectName,
+      activePath,
+      selectedDir,
+      newFileOpen: dialog === 'newFile',
+      fileText: (p) => texts.get(norm(p).toLowerCase()),
+      exists: (p) =>
+        existsMap[norm(p).toLowerCase()] === true ||
+        texts.has(norm(p).toLowerCase()),
+      knownClasses: [...names],
+    };
+  }, [
+    guideRoot,
+    activeTab,
+    tabs,
+    guruCode,
+    projectName,
+    activePath,
+    selectedDir,
+    existsMap,
+    dialog,
+  ]);
+  const guideErrors = useMemo(
+    () => (activeErrors.path === activePath ? activeErrors.list : []),
+    [activeErrors, activePath],
+  );
+  const guide = useMemo(() => {
+    if (!guideCtx) return null;
+    // फाइल बनिसकेको import गल्ती पुरानो हो — an import error whose file now exists is already fixed
+    const live = guideErrors.filter((e) => {
+      const f = neededFile(e, guideCtx);
+      return !(f && guideCtx.exists(f));
+    });
+    return firstGuide(live, guideCtx);
+  }, [guideCtx, guideErrors]);
+  // 📄 गाइडको "यहीँ बनाऊ" — create the missing file at the exact path, then open it
+  const createGuideFile = async (relPath: string) => {
+    if (!project) return;
+    try {
+      const created = await window.studio.createFile(project.rootPath, relPath);
+      setTreeVersion((v) => v + 1);
+      await openFile({
+        name: baseName(created),
+        path: created,
+        isDirectory: false,
+      });
+    } catch (err) {
+      showError(err instanceof Error ? err.message : String(err));
+    }
+  };
+  // गाइडले चाहिने फाइल र फोल्डर डिस्कमा छन् कि छैनन् हेर्ने — check on disk whether the file and its folders exist
+  const guidePaths = useMemo(() => {
+    if (!guideCtx) return [];
+    const seen = new Set<string>();
+    const out: { path: string; dir: boolean }[] = [];
+    for (const e of guideErrors)
+      for (const p of neededPaths(e, guideCtx)) {
+        const k = norm(p.path).toLowerCase();
+        if (!seen.has(k)) {
+          seen.add(k);
+          out.push(p);
+        }
+      }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    guideErrors,
+    guideCtx?.rootPath,
+    guideCtx?.filePath,
+    guideCtx?.projectName,
+  ]);
+  const guidePathsKey = guidePaths.map((p) => p.path).join('|');
+  useEffect(() => {
+    if (guidePaths.length === 0) return;
+    let live = true;
+    const check = () => {
+      for (const p of guidePaths) {
+        const key = norm(p.path).toLowerCase();
+        const probe = p.dir
+          ? window.studio.readDir(p.path)
+          : window.studio.readFile(p.path);
+        void probe
+          .then(() => true)
+          .catch(() => false)
+          .then((ok) => {
+            if (!live) return;
+            // फाइल अहिले मात्र बन्यो: Dart लाई फेरि जाँच्न लगाउने — the file just appeared: ask Dart to re-check this file
+            if (!p.dir && ok && guideSeen.current[key] === false && activeTab)
+              scheduleDiagnostics(activeTab.path, activeTab.content);
+            guideSeen.current[key] = ok;
+            setExistsMap((m) => (m[key] === ok ? m : { ...m, [key]: ok }));
+          });
+      }
+    };
+    check();
+    const id = setInterval(check, 1500);
+    return () => {
+      live = false;
+      clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guidePathsKey, treeVersion]);
+
+  // 🎉 गल्ती हटेपछि "Done" — उही फाइलमा गाइड हराएर १.२ सेकेन्ड फर्केन भने ठीक भयो
+  // Done: the guide went away in the same file and stayed away for 1.2 s, so the problem is fixed
+  const [celebrate, setCelebrate] = useState<string | null>(null);
+  const lastGuide = useRef<{
+    file: string;
+    path: string | null;
+    made: string;
+  } | null>(null);
+  const celebrateTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    if (guide) {
+      lastGuide.current = {
+        file: guide.file,
+        path: activePath,
+        made: guide.createPath
+          ? (norm(guideRoot) + '/' + guide.createPath).toLowerCase()
+          : '',
+      };
+      clearTimeout(celebrateTimer.current);
+      return;
+    }
+    const prev = lastGuide.current;
+    if (!prev) return;
+    if (prev.path !== activePath) {
+      clearTimeout(celebrateTimer.current);
+      lastGuide.current = null;
+      // गाइडले बनाइदिएको फाइल खुल्यो = ठीक भयो; अर्को फाइलमा गएको मात्र हो भने होइन
+      // The file the guide was about just opened = fixed; merely switching to another file is not
+      if (
+        activePath &&
+        prev.made &&
+        norm(activePath).toLowerCase() === prev.made
+      ) {
+        setCelebrate(prev.file);
+        setTimeout(() => setCelebrate(null), 2800);
+      }
+      return;
+    }
+    clearTimeout(celebrateTimer.current);
+    celebrateTimer.current = setTimeout(() => {
+      lastGuide.current = null;
+      setCelebrate(prev.file);
+      setTimeout(() => setCelebrate(null), 2800);
+    }, 1200);
+  }, [guide, activePath]);
+
   // ✅/❌ import लाइनको रङ: ठीक = हरियो, गलत = रातो — import lines: green when fine, red when wrong.
   const importDeco = useRef<Monaco.editor.IEditorDecorationsCollection | null>(
     null,
@@ -1127,10 +1327,6 @@ export default function App() {
   // खुला फाइलका सबै गल्ती (Monaco, Dart, Python, run) — every error in the open file, for Guru and the status bar.
   // खुला फाइल र त्यसका गल्ती सँगै राख्ने, ताकि Guru ले कहिल्यै अर्को फाइलको गल्ती नबुझाओस्।
   // Keep the errors together with the file they belong to, so Guru never explains another file's errors.
-  const [activeErrors, setActiveErrors] = useState<{
-    path: string | null;
-    list: { line: number; column: number; message: string; source: string }[];
-  }>({ path: null, list: [] });
   useEffect(() => {
     const read = () => {
       const model = editorRef.current?.getModel();
@@ -1746,6 +1942,16 @@ export default function App() {
             onPointerDown={startGuruResize}
           />
           <TutorPanel
+            guideSlot={
+              guide && !guideDismissed.includes(guide.key) ? (
+                <ErrorGuide
+                  docked
+                  guide={guide}
+                  onCreate={createGuideFile}
+                  onClose={() => setGuideDismissed((d) => [...d, guide.key])}
+                />
+              ) : null
+            }
             account={account}
             getContext={getContext}
             pending={pendingTutor}
@@ -1918,11 +2124,56 @@ export default function App() {
         </div>
       )}
 
+      {guide && guideDismissed.includes(guide.key) && (
+        <button
+          data-testid="guide-chip"
+          className="fixed right-4 bottom-4 z-40 rounded-full border-2 border-sky-400 bg-slate-900 px-3 py-1 text-sm font-bold text-sky-200 shadow-lg"
+          onClick={() =>
+            setGuideDismissed((d) => d.filter((k) => k !== guide.key))
+          }
+        >
+          {tr('🧭 गाइड देखाऊ · Show guide')}
+        </button>
+      )}
+      {/* 🎉 सबै कदम सकिएर गल्ती हट्दा "Done" — the Done celebration when the problem is fixed */}
+      {celebrate && (
+        <div
+          data-testid="guide-done"
+          className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center"
+        >
+          <div className="guide-celebrate relative rounded-2xl border-4 border-emerald-400 bg-slate-900/95 px-8 py-5 text-center shadow-2xl shadow-black/70">
+            <div className="text-4xl font-extrabold text-emerald-300">
+              {'✅ Done!'}
+            </div>
+            <div className="mt-1 text-lg font-bold text-slate-100">
+              {celebrate}
+            </div>
+            <div className="mt-1 text-base font-bold text-sky-200">
+              {tr('सबै ठीक भयो! · All fixed!')}
+            </div>
+            {['🎉', '✨', '🎊', '⭐', '✨', '🎉'].map((e, i) => (
+              <span
+                key={i}
+                className="guide-confetti absolute text-2xl"
+                style={{
+                  left: `${8 + i * 16}%`,
+                  top: '-8px',
+                  animationDelay: `${i * 0.12}s`,
+                }}
+              >
+                {e}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {dialog === 'newFile' && project && (
         <PromptDialog
           title={tr('नयाँ फाइल · New file')}
           hint={tr(`फोल्डर · Folder: ${baseName(selectedDir)}`)}
           placeholder="lib/screens/home_screen.dart"
+          initialValue={guide?.typed ?? ''}
           confirmLabel={tr('बनाऊ · Create')}
           onClose={() => setDialog(null)}
           onSubmit={async (name) => {

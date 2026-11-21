@@ -19,7 +19,7 @@
     "lint": "oxlint && oxfmt --check",
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc --noEmit",
-    "test:unit": "node tests/unit/speech-order.mjs && node tests/unit/english-first.mjs && node tests/unit/wants-build.mjs && node tests/unit/import-typos.mjs && node tests/unit/split-code.mjs && node tests/unit/wrong-file.mjs",
+    "test:unit": "node tests/unit/speech-order.mjs && node tests/unit/english-first.mjs && node tests/unit/wants-build.mjs && node tests/unit/import-typos.mjs && node tests/unit/split-code.mjs && node tests/unit/wrong-file.mjs && node tests/unit/error-guide.mjs",
     "test:e2e": "node tests/e2e/run.mjs"
   },
   "devDependencies": {

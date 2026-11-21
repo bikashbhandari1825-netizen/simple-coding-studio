@@ -833,3 +833,94 @@ input[type='checkbox'] {
   border-left: 3px solid #ef4444;
   margin-left: 3px;
 }
+
+/* 🧭 Error Guide: नाच्ने तीर र चम्किने घेरा — the bouncing arrow and the pulsing ring */
+@keyframes guide-bounce {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(10px);
+  }
+}
+@keyframes guide-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(196 181 253 / 0.9);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgb(196 181 253 / 0);
+  }
+}
+.guide-arrow {
+  animation: guide-bounce 0.8s ease-in-out infinite;
+}
+.guide-ring {
+  border: 2px solid rgb(196 181 253);
+  animation: guide-pulse 1.1s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .guide-arrow,
+  .guide-ring {
+    animation: none;
+  }
+}
+
+/* ✅ कदम सकिँदा पप र अन्तिममा "Done" को उत्सव — a pop on each finished step and a Done celebration at the end */
+@keyframes guide-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.guide-pop {
+  animation: guide-pop 0.45s ease-out;
+}
+@keyframes guide-celebrate {
+  0% {
+    transform: scale(0.3) rotate(-8deg);
+    opacity: 0;
+  }
+  35% {
+    transform: scale(1.15) rotate(3deg);
+    opacity: 1;
+  }
+  60% {
+    transform: scale(1) rotate(0);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes guide-confetti {
+  0% {
+    transform: translateY(0) rotate(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-90px) rotate(260deg);
+    opacity: 0;
+  }
+}
+.guide-celebrate {
+  animation: guide-celebrate 0.7s ease-out;
+}
+.guide-confetti {
+  animation: guide-confetti 1.6s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .guide-pop,
+  .guide-celebrate,
+  .guide-confetti {
+    animation: none;
+  }
+}

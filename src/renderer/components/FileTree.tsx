@@ -26,6 +26,8 @@ export function FileTree(props: Props) {
         <button
           className="min-w-0 flex-1 truncate text-left text-xs font-semibold tracking-wide text-slate-300 uppercase"
           title={project.rootPath}
+          data-tree-path={project.rootPath}
+          data-guide-root
           onClick={() => onSelectDir(project.rootPath)}
         >
           {project.name}
@@ -33,6 +35,7 @@ export function FileTree(props: Props) {
         <button
           className="icon-btn"
           title={tr('नयाँ फाइल · New file')}
+          data-guide-button="new file"
           onClick={onNewFile}
         >
           ＋📄
@@ -131,6 +134,7 @@ function TreeRow(props: Props & { entry: FileEntry; depth: number }) {
         }`}
         style={{ paddingLeft: 10 + depth * 14 }}
         onClick={click}
+        data-tree-path={entry.path}
         title={entry.path}
       >
         <span className="w-3 text-[10px] text-slate-500">

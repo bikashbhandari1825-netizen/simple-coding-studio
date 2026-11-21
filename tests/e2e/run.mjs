@@ -45,6 +45,14 @@ function makeFixture() {
     'lib/typo_import.dart',
     "import 'packages:flutter/matterial.dart';\nimport 'dart:async';\n\nvoid main() {}\n",
   );
+  w(
+    'lib/guide_pkg.dart',
+    "import 'package:zz_missing_pkg/zz.dart';\n\nvoid main() {}\n",
+  );
+  w(
+    'lib/guide_file.dart',
+    "import 'zz_models/zz_item.dart';\n\nvoid main() {}\n",
+  );
   w('lib/format_me.dart', 'void main(){print( "x" );}\n');
   w('app.js', 'const name = "Bikash";\nconsole.log(nme);\n');
   w('hello.py', 'def greet(name)\n    print("Namaste", name)\n');
@@ -501,6 +509,82 @@ function tests(fixture) {
           throw new Error('Next error did not move: ' + JSON.stringify(r));
         if (!r.closed) throw new Error('panel did not close');
         return r.texts.slice(0, 3).join(' || ');
+      },
+    },
+    {
+      name: 'Error guide: missing package → steps + arrow; missing file → created → steps turn OK',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          const out = {};
+          await __t.open('guide_pkg.dart');
+          out.pkgGuide = Boolean(await __t.until(() => document.querySelector('[data-testid=error-guide]'), 60000, 300));
+          const g = document.querySelector('[data-testid=error-guide]');
+          out.en = g?.querySelector('[data-testid=guide-en]')?.innerText ?? '';
+          out.ne = g?.querySelector('[data-testid=guide-ne]')?.innerText ?? '';
+          out.file = g?.querySelector('[data-testid=guide-file]')?.innerText ?? '';
+          out.steps = g ? g.querySelectorAll('[data-testid=guide-step]').length : 0;
+          out.inGuru = Boolean(g?.closest('aside'));
+          out.arrow = Boolean(await __t.until(() => document.querySelector('[data-testid=guide-arrow]'), 5000, 200));
+          await __t.open('guide_file.dart');
+          out.fileGuide = Boolean(await __t.until(() => /zz_models/.test(document.querySelector('[data-testid=guide-file]')?.innerText ?? ''), 60000, 300));
+          out.before = [...document.querySelectorAll('[data-testid=guide-step]')].map((s) => s.dataset.done);
+          await __t.wait(1000);
+          const cur = document.querySelector('[data-testid=guide-step][data-current=yes]');
+          out.curStep = cur?.innerText ?? ''; out.arrowText = document.querySelectorAll('[data-testid=guide-arrow]').length + ':' + (document.querySelector('[data-testid=guide-arrow]')?.innerText ?? '') + ' btn=' + JSON.stringify(document.querySelector('[data-guide-button]')?.getBoundingClientRect()) + ' vw=' + innerWidth;
+          const arrowEl = document.querySelector('[data-testid=guide-arrow]');
+          const treeEl = document.querySelector('[data-guide-root]')?.closest('aside');
+          const ar = arrowEl?.getBoundingClientRect(); const tr = treeEl?.getBoundingClientRect();
+          out.geo = { ar: ar && [ar.left, ar.top], tr: tr && [tr.left, tr.right, tr.top, tr.bottom] }; out.arrowInTree = Boolean(ar && tr && ar.left >= tr.left && ar.left <= tr.right + 12 && ar.top >= tr.top && ar.top <= tr.bottom);
+          out.hasCreate = Boolean(document.querySelector('[data-testid=guide-create]'));
+          document.querySelector('[data-testid=guide-create]')?.click();
+          out.after = await __t.until(() => {
+            const d = [...document.querySelectorAll('[data-testid=guide-step]')].map((s) => s.dataset.done);
+            return d.length === 0 || d[1] === 'yes' ? d : null;
+          }, 20000, 300);
+          out.done = Boolean(await __t.until(() => document.querySelector('[data-testid=guide-done]'), 25000, 200));
+          out.debug = { guide: Boolean(document.querySelector('[data-testid=error-guide]')), steps: [...document.querySelectorAll('[data-testid=guide-step]')].map((x) => x.dataset.done), squiggles: __t.squiggles(), tab: document.querySelector('main div[title].bg-slate-800')?.innerText.split('\\n')[0] };
+          return out;
+        })()`);
+        if (!r.pkgGuide) throw new Error('no guide for the missing package');
+        if (!/zz_missing_pkg/.test(r.en) || !/^The package/.test(r.en))
+          throw new Error('English reason: ' + r.en);
+        if (!/[ऀ-ॿ]/.test(r.ne)) throw new Error('no Nepali: ' + r.ne);
+        if (!/pubspec\.yaml/.test(r.file)) throw new Error('file: ' + r.file);
+        if (r.steps !== 3) throw new Error('steps: ' + r.steps);
+        if (!r.inGuru)
+          throw new Error('the guide card is not inside the Guru panel');
+        if (!r.done)
+          throw new Error(
+            'no Done celebration after fixing: ' + JSON.stringify(r.debug),
+          );
+        if (!r.arrow) throw new Error('no animated arrow');
+        if (!r.fileGuide) throw new Error('no guide for the missing file');
+        if (r.before.length < 2 || r.before.every((d) => d === 'yes'))
+          throw new Error('steps wrongly done: ' + r.before);
+        if (!r.after || (r.after.length > 0 && r.after[1] !== 'yes'))
+          throw new Error(
+            'step not marked OK after creating the file: ' + JSON.stringify(r),
+          );
+        if (!r.arrowInTree)
+          throw new Error(
+            'the arrow is not pointing in the file tree: ' +
+              JSON.stringify(r.geo) +
+              ' step=' +
+              (r.curStep || '').slice(0, 60) +
+              ' arrowText=' +
+              r.arrowText,
+          );
+        if (!/lib|＋📄/.test(r.curStep))
+          throw new Error('first step should be the lib folder: ' + r.curStep);
+        if (!r.hasCreate) throw new Error('no one-click create button');
+        if (
+          !fs.existsSync(path.join(fixture, 'lib', 'zz_models', 'zz_item.dart'))
+        )
+          throw new Error('the create button did not make the file');
+        fs.rmSync(path.join(fixture, 'lib', 'zz_models'), {
+          recursive: true,
+          force: true,
+        });
       },
     },
     {
@@ -1355,6 +1439,12 @@ for (let round = 1; round <= repeat; round++) {
     }
   }
   for (const t of tests(fixture)) {
+    if (
+      args.only &&
+      !/^(App starts|Open folder)/.test(t.name) &&
+      !t.name.toLowerCase().includes(String(args.only).toLowerCase())
+    )
+      continue;
     const t0 = Date.now();
     try {
       const note = await t.run(page);

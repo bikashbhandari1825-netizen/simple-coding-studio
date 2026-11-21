@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import type {
   AiChatMessage,
   AiContext,
@@ -101,6 +107,8 @@ interface Props {
   onCode?: (blocks: CodeBlock[]) => void;
   /** कोड बाकसको 'फाइलमा लगाऊ' ले यही चलाउँछ — the Code box's 'Preview & apply' calls this */
   applyRef?: { current: ((code: string) => void) | null };
+  /** 🧭 गल्ती मार्गदर्शक कार्ड (Guru बाकस भित्र) — the error-guide card, shown inside the Guru panel */
+  guideSlot?: ReactNode;
 }
 
 export interface EditorError {
@@ -122,6 +130,7 @@ export function TutorPanel({
   applyRef,
   onVoiceCommand,
   onApplyToFile,
+  guideSlot,
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   const [input, setInput] = useState('');
@@ -684,6 +693,8 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
         )}
         <AccountMenu account={account} compact />
       </div>
+
+      {guideSlot}
 
       {/* 📈 English लेभल र ✍️ लेख्दा बुझाऊ — English level and explain-as-you-type */}
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 px-3 py-1.5 text-[11px] text-slate-300">

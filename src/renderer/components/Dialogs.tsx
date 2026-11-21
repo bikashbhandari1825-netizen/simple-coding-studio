@@ -52,22 +52,26 @@ export function PromptDialog({
   hint,
   placeholder,
   confirmLabel,
+  initialValue = '',
   onSubmit,
   onClose,
 }: {
   title: string;
   hint?: string;
   placeholder?: string;
+  /** आफैं भरिएको नाम (गाइडबाट) — a pre-filled value (from the guide) */
+  initialValue?: string;
   confirmLabel: string;
   onSubmit: (value: string) => Promise<void>;
   onClose: () => void;
 }) {
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(initialValue);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     inputRef.current?.focus();
+    inputRef.current?.select();
   }, []);
 
   const submit = async () => {
