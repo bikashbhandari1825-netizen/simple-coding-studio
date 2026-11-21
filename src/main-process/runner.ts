@@ -15,6 +15,7 @@ import type {
   RunPreset,
 } from '../shared/types';
 import { templateSpec, writeTemplateFiles } from './flutterTemplates';
+import { sanitizeProjectName } from '../shared/projectName';
 import {
   assertInsideProject,
   detectProjectKind,
@@ -397,16 +398,14 @@ export function registerRunnerHandlers(): void {
       rawName: unknown,
       rawTemplate: unknown,
     ): Promise<ProjectInfo | null> => {
-      const name = typeof rawName === 'string' ? rawName.trim() : '';
+      // जे लेखे पनि मान्य नाम बनाउने (रोक्ने होइन) — sanitize whatever was typed instead of rejecting it
+      let name = sanitizeProjectName(
+        typeof rawName === 'string' ? rawName : '',
+      );
       const templateId: FlutterTemplateId =
         rawTemplate === 'firebase' || rawTemplate === 'map'
           ? rawTemplate
           : 'basic';
-      if (!/^[a-z][a-z0-9_]{0,63}$/.test(name)) {
-        throw new Error(
-          'नाम सानो अंग्रेजी अक्षर, अंक र _ मात्र हुनुपर्छ (जस्तै my_app) — Use lowercase letters, digits and _ (e.g. my_app).',
-        );
-      }
       const win = BrowserWindow.fromWebContents(e.sender);
       const options: Electron.OpenDialogOptions = {
         title: 'नयाँ project कहाँ राख्ने? — Where should the new project go?',
@@ -417,17 +416,16 @@ export function registerRunnerHandlers(): void {
         : await dialog.showOpenDialog(options);
       if (picked.canceled || picked.filePaths.length === 0) return null;
       const parent = picked.filePaths[0];
-      const target = path.join(parent, name);
-      if (
-        await fs.stat(target).then(
+      // फोल्डर पहिल्यै भए _2, _3… थपेर खाली नाम पाउने — if the folder exists, add _2, _3… instead of failing
+      const exists = (dir: string) =>
+        fs.stat(dir).then(
           () => true,
           () => false,
-        )
-      ) {
-        throw new Error(
-          'त्यहाँ यही नामको फोल्डर पहिल्यै छ — A folder with that name already exists there.',
         );
-      }
+      const base = name;
+      for (let n = 2; await exists(path.join(parent, name)); n++)
+        name = `${base}_${n}`;
+      const target = path.join(parent, name);
       const p = preset(
         'flutter-create',
         'नयाँ Flutter project',

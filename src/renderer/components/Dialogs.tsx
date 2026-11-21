@@ -7,6 +7,7 @@ import {
 } from '../../shared/types';
 import { errorText } from '../lib/helpers';
 import { diffStats, lineDiff } from '../lib/diff';
+import { sanitizeProjectName } from '../../shared/projectName';
 import { LoginCard, type ClaudeAccount } from './ClaudeAccount';
 import { tr } from '../i18n';
 
@@ -240,6 +241,16 @@ const TEMPLATES: {
   },
 ];
 
+const NAME_IDEAS = [
+  'My First App',
+  'Nepali Quiz',
+  'Todo List',
+  'Momo Shop',
+  'Weather Now',
+  'Mero Diary',
+  'Expense Tracker',
+];
+
 /** नयाँ Flutter एप: starter छान्ने + नाम — pick a starter and a name for a new Flutter app. */
 export function NewFlutterDialog({
   onSubmit,
@@ -248,21 +259,25 @@ export function NewFlutterDialog({
   onSubmit: (name: string, template: FlutterTemplateId) => Promise<void>;
   onClose: () => void;
 }) {
-  const [name, setName] = useState('');
+  // तयार नाम पहिल्यै भरिएको: Enter थिचे पुग्छ — pre-filled, so Enter alone creates an app
+  const [name, setName] = useState(NAME_IDEAS[0]);
+  const [idea, setIdea] = useState(0);
   const [template, setTemplate] = useState<FlutterTemplateId>('basic');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     inputRef.current?.focus();
+    inputRef.current?.select(); // टाइप गर्दा सुझाव मेटिन्छ — typing replaces the suggestion
   }, []);
+  const folderName = sanitizeProjectName(name);
 
   const submit = async () => {
-    if (!name.trim() || busy) return;
+    if (busy) return;
     setBusy(true);
     setError('');
     try {
-      await onSubmit(name.trim(), template);
+      await onSubmit(name, template);
       onClose();
     } catch (err) {
       setError(errorText(err));
@@ -299,19 +314,37 @@ export function NewFlutterDialog({
         ))}
       </div>
       <p className="mb-2 text-sm text-slate-400">
-        {tr(
-          '२) नाम सानो अंग्रेजी अक्षरमा, खाली ठाउँको सट्टा _ (जस्तै nepali_quiz) — Lowercase name with _',
-        )}
+        {tr('२) एपको नाम — जे लेखे पनि हुन्छ · Any name works')}
       </p>
-      <input
-        ref={inputRef}
-        value={name}
-        placeholder="my_first_app"
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && void submit()}
-        className="glass-input w-full rounded-xl px-3 py-2 text-slate-100 outline-none"
-      />
-      <p className="mt-2 text-xs text-slate-500">
+      <div className="flex gap-2">
+        <input
+          ref={inputRef}
+          value={name}
+          placeholder="My First App"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void submit()}
+          className="glass-input min-w-0 flex-1 rounded-xl px-3 py-2 text-slate-100 outline-none"
+        />
+        <button
+          type="button"
+          className="chip"
+          title={tr('अर्को नाम सुझाव · Suggest another name')}
+          onClick={() => {
+            const next = (idea + 1) % NAME_IDEAS.length;
+            setIdea(next);
+            setName(NAME_IDEAS[next]);
+          }}
+        >
+          {tr('💡 सुझाव · Suggest')}
+        </button>
+      </div>
+      <p className="mt-2 text-xs text-slate-500" data-testid="folder-note">
+        {tr(`📁 फोल्डरको नाम · Folder name: ${folderName}`)}
+        {name.trim() && folderName !== name.trim()
+          ? tr(' (आफैं मिलाइयो · auto-adjusted)')
+          : ''}
+      </p>
+      <p className="mt-1 text-xs text-slate-500">
         {tr(
           'त्यसपछि project राख्ने फोल्डर छान्नुहोस् · Then choose where to save it.',
         )}
@@ -323,7 +356,7 @@ export function NewFlutterDialog({
         </button>
         <button
           className="btn-primary"
-          disabled={busy || !name.trim()}
+          disabled={busy}
           onClick={() => void submit()}
         >
           {busy ? tr('पर्खनुहोस्… · Working…') : tr('बनाऊ · Create')}

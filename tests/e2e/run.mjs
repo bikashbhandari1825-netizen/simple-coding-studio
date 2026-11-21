@@ -337,10 +337,22 @@ function tests(fixture) {
           radios.find((x) => x.dataset.template === 'map').click();
           await __t.wait(150);
           const after = [...dlg.querySelectorAll('[role=radio]')].map((x) => x.getAttribute('aria-checked'));
-          const hasName = Boolean(document.querySelector('[role=dialog] input'));
+          const input = document.querySelector('[role=dialog] input');
+          const hasName = Boolean(input);
+          const prefilled = input.value;
+          const setName = async (v) => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, v);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            await __t.wait(150);
+            const dlg2 = document.querySelector('[role=dialog]');
+            return { note: dlg2.querySelector('[data-testid=folder-note]')?.innerText, error: /text-rose-400/.test(dlg2.innerHTML), createDisabled: [...dlg2.querySelectorAll('button')].find((b) => b.textContent.includes('बनाऊ'))?.disabled };
+          };
+          const messy = await setName('My App Now!');
+          const blank = await setName('');
+          const nepali = await setName('नमस्ते');
           window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
           await __t.wait(250);
-          return { ids, before, after, hasName, closed: !document.querySelector('[role=dialog]') };
+          return { ids, before, after, hasName, prefilled, messy, blank, nepali, closed: !document.querySelector('[role=dialog]') };
         })()`);
         if (r.error) throw new Error(r.error);
         if (r.ids.join() !== 'basic,firebase,map')
@@ -351,6 +363,21 @@ function tests(fixture) {
         )
           throw new Error('selection: ' + JSON.stringify(r));
         if (!r.hasName || !r.closed) throw new Error(JSON.stringify(r));
+        if (!r.prefilled.trim()) throw new Error('name not pre-filled');
+        if (
+          !r.messy.note?.includes('my_app_now') ||
+          r.messy.error ||
+          r.messy.createDisabled
+        )
+          throw new Error(
+            'messy name blocked/not adjusted: ' + JSON.stringify(r.messy),
+          );
+        if (!r.blank.note?.includes('flutter_app') || r.blank.createDisabled)
+          throw new Error(
+            'blank name not defaulted: ' + JSON.stringify(r.blank),
+          );
+        if (!r.nepali.note?.includes('flutter_app') || r.nepali.error)
+          throw new Error('nepali name: ' + JSON.stringify(r.nepali));
       },
     },
     {
