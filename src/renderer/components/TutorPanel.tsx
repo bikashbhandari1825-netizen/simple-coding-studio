@@ -493,7 +493,7 @@ For each error: say which line, explain in simple words why it happened (what th
       mode: 'chat',
       label: tr('📄 यो फाइल बुझाऊ · Summarize this file'),
       prompt:
-        'Summarize this file in simple Nepali (Devanagari) only: at most 5 one-line bullets covering what it does and its main parts, then one last line starting "👉" with the single most important thing to learn from it. No English section, no code, no tables.',
+        'Summarize this file briefly. First under the heading "English": at most 4 one-line bullets in simple, basic English (what it does and its main parts). Then under the heading "नेपाली": the same bullets in simple Nepali (Devanagari). End with one line starting "👉" (English, then Nepali) with the single most important thing to learn from it. No code, no tables.',
       context: { ...ctx, runOutput: undefined },
     });
   };
@@ -527,7 +527,7 @@ ${list}`
           : ''
       }
 Reply in exactly this format and nothing else:
-❓ one line: why it happened (simple Nepali, then simple English).
+❓ one line: why it happened (simple English first, then Nepali).
 ✅ ONE fenced code block with the corrected code. If the file has fewer than 80 lines give the whole corrected file; otherwise give only the changed function or region plus one unchanged line above and below it.`,
       context: { ...ctx, runOutput: list ? undefined : ctx.runOutput },
     });
@@ -553,7 +553,7 @@ Reply in exactly this format and nothing else:
       mode: 'chat',
       label: `🧩 नयाँ विजेट/रूट: ${what}`,
       prompt: `Create this ${kind === 'flutter' || !kind ? 'Flutter widget, screen or route' : 'component'}: ${what}
-Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real, null-safe code block, 3) if it is a route/screen, the one line to register it (for example in routes or Navigator.push). At most 3 short bullets of notes, Nepali then English. No tables, no long explanation.`,
+Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real, null-safe code block, 3) if it is a route/screen, the one line to register it (for example in routes or Navigator.push). At most 3 short bullets of notes, simple English first, then Nepali. No tables, no long explanation.`,
       context: { projectKind: kind },
     });
   };
