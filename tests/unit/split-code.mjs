@@ -78,4 +78,40 @@ const pl = splitCode(
 eq('placement: title', pl.blocks[0].title, 'lib/main.dart');
 eq('placement: note', pl.blocks[0].place, 'app entry, replace whole file');
 eq('placement: plan text kept', pl.text, 'Plan');
+const t = (name, md, want) => eq(name, splitCode(md).blocks[0]?.title, want);
+t(
+  'title: loose header',
+  '**Code 2: lib/login_page.dart**\n\n```dart\nclass A {}\n```',
+  'lib/login_page.dart',
+);
+t(
+  'title: first-line comment',
+  '```dart\n// lib/auth_gate.dart\nclass A {}\n```',
+  'lib/auth_gate.dart',
+);
+t(
+  'title: yaml comment',
+  '```yaml\n# pubspec.yaml\nname: a\n```',
+  'pubspec.yaml',
+);
+t(
+  'title: inferred main',
+  "```dart\nimport 'package:flutter/material.dart';\nvoid main() {}\n```",
+  'lib/main.dart',
+);
+t(
+  'title: inferred widget class',
+  '```dart\nclass LoginPage extends StatelessWidget {}\n```',
+  'lib/login_page.dart',
+);
+t(
+  'title: inferred pubspec',
+  '```yaml\nname: a\ndependencies:\n  flutter:\n```',
+  'pubspec.yaml',
+);
+eq(
+  'title: header line removed from text',
+  splitCode('Intro\n\nCode 2: lib/x.dart\n\n```dart\nvoid f(){}\n```').text,
+  'Intro',
+);
 process.exit(bad ? 1 : 0);

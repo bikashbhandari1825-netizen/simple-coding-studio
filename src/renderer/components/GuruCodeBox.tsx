@@ -155,10 +155,14 @@ export function GuruCodeBox({
         data-testid="code-target"
         className="flex items-center gap-2 border-b border-slate-800 px-3 py-1 font-mono text-[13px] font-bold"
       >
-        <span className="text-emerald-300">
+        <span
+          data-testid="code-file"
+          className="text-[15px] font-bold text-emerald-300"
+          style={{ fontWeight: 700 }}
+        >
           {block.title
             ? `📄 ${block.title}`
-            : tr('📄 फाइल नाम छैन · no file name')}
+            : tr('📄 फाइल नाम Guru ले दिएन · file name not given')}
         </span>
         {block.place && <span className="text-slate-300">— {block.place}</span>}
         <span

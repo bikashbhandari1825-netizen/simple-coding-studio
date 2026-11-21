@@ -24,16 +24,52 @@ export interface SplitAnswer {
 const PATH_LINE =
   /^[\s`*_#>-]*([\w./\\-]+\.[A-Za-z0-9]{1,6})[\s`*_:]*(?:[—–]\s*(.{1,80}?))?[\s`*_]*$/;
 
+// "Code 2: lib/login_page.dart", "### 2. lib/x.dart" — a short header line that contains a file path somewhere
+const LOOSE_PATH =
+  /([\w./\\-]*[\w-]\.(?:dart|ya?ml|json|py|js|ts|tsx|jsx|html|css|md|kt|java|xml|gradle|txt))\b/gi;
+// // lib/main.dart  /  # pubspec.yaml  /  <!-- index.html --> — the path written on the first line inside the code
+const FIRST_LINE_PATH =
+  /^\s*(?:\/\/|#|\/\*|<!--)\s*(?:file(?:name)?\s*[:=-]?\s*)?([\w./\\-]*[\w-]\.[A-Za-z0-9]{1,6})\s*(?:-->|\*\/)?\s*$/i;
+
+const snake = (name: string) =>
+  name
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/_{2,}/g, '_')
+    .toLowerCase();
+
+/** फाइल नाम नदिएको कोडको बाटो अनुमान — guess the target file from what the code is */
+export function inferTitle(code: string, language: string): string | undefined {
+  const lang = language.toLowerCase();
+  if ((lang === 'yaml' || lang === 'yml') && /^dependencies:/m.test(code))
+    return 'pubspec.yaml';
+  if (lang === 'dart' || /^\s*import 'package:/m.test(code)) {
+    if (/\bvoid\s+main\s*\(/.test(code)) return 'lib/main.dart';
+    const widget =
+      /^\s*class\s+([A-Z]\w*)\s+extends\s+(?:Stateless|Stateful)Widget/m.exec(
+        code,
+      );
+    const any = /^\s*class\s+([A-Z]\w*)/m.exec(code);
+    const name = (widget ?? any)?.[1];
+    if (name) return 'lib/' + snake(name) + '.dart';
+  }
+  return undefined;
+}
+
 function makeBlock(lines: string[], title?: string, place?: string): CodeBlock {
   const language = lines[0].trim().slice(3).trim().split(/\s+/)[0] ?? '';
   const closed =
     lines.length > 1 && lines[lines.length - 1].trim().startsWith('```');
   const inner = lines.slice(1, closed ? -1 : undefined);
+  const code = inner.join('\n');
+  title =
+    title ??
+    FIRST_LINE_PATH.exec(inner[0] ?? '')?.[1] ??
+    inferTitle(code, language);
   return {
     title,
     place,
     language,
-    code: inner.join('\n'),
+    code,
     markdown: lines.join('\n'),
   };
 }
@@ -58,6 +94,13 @@ export function splitCode(markdown: string): SplitAnswer {
       title = m ? m[1] : undefined;
       place = m?.[2]?.replace(/[`*_]+/g, '').trim() || undefined;
       if (m) text.splice(k, 1);
+      else if (k >= 0 && text[k].length < 120) {
+        const all = [...text[k].matchAll(LOOSE_PATH)];
+        if (all.length === 1) {
+          title = all[0][1];
+          text.splice(k, 1);
+        }
+      }
       current = [line];
     } else {
       current.push(line);
