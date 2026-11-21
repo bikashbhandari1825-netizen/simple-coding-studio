@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { tr, tr2 } from '../i18n';
 import type { FixTip } from '../lib/errorAnalyzer';
 
@@ -16,6 +16,8 @@ interface Props {
   onKey: (key: 'r' | 'R') => void;
   onClear: () => void;
   onAskGuru: () => void;
+  /** छानेको/कपी गरेको error पाठ Guru लाई (बटन थिचेपछि मात्र) — send the picked error text to Guru, only on click */
+  onAskSelection?: (text: string) => void;
   onHide: () => void;
   /** यो run का error र सुझाव — Errors and fix tips found in this run. */
   tips?: FixTip[];
@@ -24,6 +26,19 @@ interface Props {
   /** 🔧 एकै क्लिकको fix — run a tip's one-click fix */
   onFixTip?: (tip: FixTip) => void;
 }
+
+const isErr = (l: ConsoleLine) =>
+  l.kind !== 'command' && l.kind !== 'info' && looksLikeError(l.text);
+
+/** असली error देखिने लाइन — a line that looks like a real build/runtime/syntax error. */
+export function looksLikeError(text: string): boolean {
+  return /(^|[\s:\]])(error|exception|fatal|traceback|syntaxerror|typeerror|nameerror|referenceerror|modulenotfounderror|importerror)\b|\bfailed\b|unhandled|^E\/|undefined name|undefined class|not found|cannot find|could not/i.test(
+    text,
+  );
+}
+
+const ERROR_LINE =
+  'font-semibold text-red-400 bg-red-950/40 border-l-2 border-red-500 pl-2';
 
 const COLORS: Record<ConsoleLine['kind'], string> = {
   command: 'text-sky-300 font-semibold',
@@ -41,6 +56,7 @@ export function ConsolePanel({
   onKey,
   onClear,
   onAskGuru,
+  onAskSelection,
   onHide,
   tips = [],
   onOpenTip,
@@ -48,9 +64,20 @@ export function ConsolePanel({
   onFixTip,
 }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  // छानेको वा कपी गरेको पाठ: बटन मात्र देखाउने, आफैं Guru लाई नपठाउने — picked/copied text only shows a button; nothing is sent by itself
+  const [picked, setPicked] = useState('');
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
   }, [lines, tips.length]);
+  const readSelection = () => {
+    const sel = window.getSelection();
+    const box = boxRef.current;
+    const text = sel?.toString().trim() ?? '';
+    const inside =
+      sel && box && box.contains(sel.anchorNode) && box.contains(sel.focusNode);
+    setPicked(inside && text.length >= 3 ? text.slice(0, 6000) : '');
+  };
 
   return (
     <div className="flex h-full flex-col bg-slate-950">
@@ -90,6 +117,23 @@ export function ConsolePanel({
             {tr('⏹ रोक · Stop')}
           </button>
         )}
+        {picked && onAskSelection && (
+          <button
+            data-testid="ask-guru-selection"
+            className="chip animate-pulse border-violet-400 bg-violet-600/80 text-white"
+            title={tr(
+              'छानेको वा कपी गरेको पाठ Guru लाई पठाउँछ · Sends the text you selected or copied to Guru',
+            )}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              onAskSelection(picked);
+              setPicked('');
+              window.getSelection()?.removeAllRanges();
+            }}
+          >
+            {tr('🧑‍🏫 गुरु AI लाई सोध · Ask Guru AI')}
+          </button>
+        )}
         <button
           className="chip"
           onClick={onAskGuru}
@@ -105,7 +149,14 @@ export function ConsolePanel({
           ▾
         </button>
       </div>
-      <div className="flex-1 overflow-auto px-3 py-2 font-mono text-[13px] leading-5 whitespace-pre-wrap">
+      <div
+        ref={boxRef}
+        onMouseUp={readSelection}
+        onKeyUp={readSelection}
+        onCopy={readSelection}
+        data-testid="output-box"
+        className="flex-1 overflow-auto px-3 py-2 font-mono text-[13px] leading-5 whitespace-pre-wrap"
+      >
         {lines.length === 0 ? (
           <p className="text-slate-600">
             {tr(
@@ -114,7 +165,11 @@ export function ConsolePanel({
           </p>
         ) : (
           lines.map((l) => (
-            <div key={l.id} className={COLORS[l.kind]}>
+            <div
+              key={l.id}
+              data-error-line={isErr(l) ? 'true' : undefined}
+              className={isErr(l) ? ERROR_LINE : COLORS[l.kind]}
+            >
               {l.kind === 'command'
                 ? `▶ ${l.text}`
                 : l.kind === 'info' || l.kind === 'error'

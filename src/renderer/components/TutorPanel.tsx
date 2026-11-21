@@ -17,6 +17,8 @@ import { Markdown } from './Markdown';
 import { DiffDialog } from './Dialogs';
 import { firstCodeBlock, mergeSnippet } from '../lib/diff';
 import { englishFirst } from '../lib/englishFirst';
+import { splitCode, type CodeBlock } from '../lib/splitCode';
+import { hintFor } from '../lib/editorErrorHint';
 import { getUiLang, tr, tr2 } from '../i18n';
 import { VoiceWave } from '../voice/VoiceWave';
 import { SpeakWave } from '../voice/SpeakWave';
@@ -55,7 +57,6 @@ import {
   useProgress,
 } from '../lib/progress';
 
-const TYPE_EXPLAIN_KEY = 'studio.guruTypeExplain';
 const AUTO_SPEAK_KEY = 'studio.guruAutoSpeak';
 
 interface ChatItem {
@@ -96,6 +97,10 @@ interface Props {
   onVoiceCommand?: (cmd: VoiceCommand) => void;
   /** Guru ले दिएको सच्याइएको पूरा पाठ खुला फाइलमा लगाउने — put the reviewed text into the open file */
   onApplyToFile?: (content: string) => void;
+  /** Guru ले कोड लेखेपछि मुख्य स्क्रिनको कोड बाकसमा पठाउने — hand finished code blocks to the Code box in front */
+  onCode?: (blocks: CodeBlock[]) => void;
+  /** कोड बाकसको 'फाइलमा लगाऊ' ले यही चलाउँछ — the Code box's 'Preview & apply' calls this */
+  applyRef?: { current: ((code: string) => void) | null };
 }
 
 export interface EditorError {
@@ -113,6 +118,8 @@ export function TutorPanel({
   editorErrors,
   activeFile,
   onJumpTo,
+  onCode,
+  applyRef,
   onVoiceCommand,
   onApplyToFile,
 }: Props) {
@@ -122,14 +129,6 @@ export function TutorPanel({
   // 📈 Progressive English लेभल — the learner's English level
   const [eng, setEng] = useState(loadLevel);
   const [levelNote, setLevelNote] = useState('');
-  const [typeExplain, setTypeExplain] = useState(() => {
-    try {
-      // नमागी नबोल्ने: पूर्वनिर्धारित बन्द — off unless the learner turns it on
-      return localStorage.getItem(TYPE_EXPLAIN_KEY) === 'on';
-    } catch {
-      return false;
-    }
-  });
   const endRef = useRef<HTMLDivElement>(null);
   // बोल्दै गर्दा शब्दहरू तुरुन्तै input मा देखाउने — show spoken words in the input box live.
   // रेकर्डिङ सुरु हुँदा box मा भएको पाठ यहीँ एकपटक मात्र समात्ने (React को ढिलो update मा भर नपर्ने)।
@@ -204,6 +203,11 @@ export function TutorPanel({
         continue;
       learned.current.add(item.id);
       learnFrom(item.content);
+      // कोड बाकसमा पठाउने (व्याख्या यहीँ रहन्छ) — send the code to the Code box; the explanation stays here
+      const codeBlocks = splitCode(
+        splitBlocks(englishFirst(item.content).text).markdown,
+      ).blocks;
+      if (codeBlocks.length) onCode?.(codeBlocks);
       const { challenge } = splitBlocks(item.content);
       if (challenge && !todaysChallenge()) setTodaysChallenge(challenge);
     }
@@ -475,6 +479,8 @@ For each error: say which line, explain in simple words why it happened (what th
     });
   };
 
+  if (applyRef) applyRef.current = openApply;
+
   const fixAndApply = () => {
     const ctx = getContext();
     const list = editorErrors
@@ -733,29 +739,6 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
         <label
           className="flex cursor-pointer items-center gap-1"
           title={tr(
-            'Editor मा नयाँ कोड लेखेर रोकिएपछि Guru ले हरेक नयाँ लाइन र शब्द आफैं बुझाउँछ · After you write new code and pause, Guru explains every new line and word by itself',
-          )}
-        >
-          <input
-            type="checkbox"
-            checked={typeExplain}
-            onChange={(e) => {
-              setTypeExplain(e.target.checked);
-              try {
-                localStorage.setItem(
-                  TYPE_EXPLAIN_KEY,
-                  e.target.checked ? 'on' : 'off',
-                );
-              } catch {
-                // ignore
-              }
-            }}
-          />
-          {tr('✍️ लेख्दा बुझाऊ · Explain as I type')}
-        </label>
-        <label
-          className="flex cursor-pointer items-center gap-1"
-          title={tr(
             'Guru को जवाफ सकिनेबित्तिकै आफैं ठूलो स्वरमा सुनाउने · Read every answer aloud as soon as it is written',
           )}
         >
@@ -873,15 +856,31 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
                     ? item.content
                     : englishFirst(item.content).text;
                   const b = splitBlocks(shown, item.streaming);
+                  // 📦 व्याख्या र कोड छुट्टाछुट्टै बाकसमा — explanation and code in separate boxes
+                  const parts = splitCode(b.markdown);
+                  const boxed = parts.blocks.length > 0;
                   return (
-                    <>
-                      {b.markdown && (
+                    <div data-answer>
+                      {/* व्याख्या यहीँ (छेउको बाकस); कोड मुख्य स्क्रिनको "Guru को कोड" बाकसमा — explanation here, code in the Code box in front */}
+                      {parts.text && (
                         <Markdown
-                          text={b.markdown}
-                          showCodeTools={!item.streaming}
+                          text={parts.text}
+                          showCodeTools={false}
                           onExplainCode={busyId ? undefined : explainCodeBlock}
                           onApplyCode={busyId ? undefined : openApply}
                         />
+                      )}
+                      {boxed && (
+                        <div
+                          data-testid="code-moved-note"
+                          className="mt-2 rounded-lg border border-emerald-500/40 bg-emerald-950/30 px-2 py-1.5 text-[12px] text-emerald-200"
+                        >
+                          {item.streaming
+                            ? tr('💻 कोड लेख्दैछु… · Writing the code…')
+                            : tr(
+                                `💻 ${parts.blocks.length} कोड बाकस "Guru को कोड" मा छ · ${parts.blocks.length} code block(s) are in the "Guru's code" box`,
+                              )}
+                        </div>
                       )}
                       {b.quiz && <QuizCard data={b.quiz} />}
                       {b.challenge && (
@@ -898,7 +897,7 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
                           challengeTitle={item.challengeTitle}
                         />
                       )}
-                    </>
+                    </div>
                   );
                 })()
               ) : item.streaming ? (
@@ -963,18 +962,32 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
               </span>
               <div className="flex-1" />
             </div>
-            <ul className="mt-1 max-h-20 space-y-0.5 overflow-auto">
-              {editorErrors.slice(0, 5).map((e, i) => (
-                <li key={i}>
-                  <button
-                    className="w-full truncate text-left font-mono text-[11px] text-rose-200 hover:text-white hover:underline"
-                    title={e.message}
-                    onClick={() => onJumpTo(e.line, e.column)}
-                  >
-                    {tr(`लाइन ${e.line} · line ${e.line}`)}: {e.message}
-                  </button>
-                </li>
-              ))}
+            <ul
+              className="mt-1 max-h-32 space-y-1.5 overflow-auto"
+              data-testid="error-hints"
+            >
+              {editorErrors.slice(0, 4).map((e, i) => {
+                const hint = hintFor(e.message, e.line);
+                return (
+                  <li key={i}>
+                    <button
+                      className="w-full text-left hover:underline"
+                      title={e.message}
+                      onClick={() => onJumpTo(e.line, e.column)}
+                    >
+                      <span className="font-mono text-[11px] font-semibold text-red-300">
+                        {tr(`लाइन ${e.line} · line ${e.line}`)}
+                      </span>
+                      <span className="block text-[12px] text-rose-50">
+                        {hint.en}
+                      </span>
+                      <span className="block text-[12px] text-rose-200/90">
+                        {hint.ne}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
             <button
               className="chip mt-1.5 border-rose-600 text-rose-100"
@@ -985,6 +998,16 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
                 '🩺 Guru लाई किन र कसरी सच्याउने सोध · Ask Guru why and how to fix',
               )}
             </button>
+          </div>
+        )}
+        {editorErrors.length === 0 && activeFile && (
+          <div
+            data-testid="all-good"
+            className="mb-2 rounded-lg border border-emerald-600/60 bg-emerald-950/30 px-2 py-1 text-[12px] text-emerald-200"
+          >
+            {tr(
+              `✅ ${activeFile}: अहिले कुनै गल्ती भेटिएन · No mistakes found right now`,
+            )}
           </div>
         )}
         {listening && (

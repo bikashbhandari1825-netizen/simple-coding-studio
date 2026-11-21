@@ -20,8 +20,11 @@ export function Markdown({
   onExplainCode,
   onApplyCode,
   showCodeTools = true,
+  variant = 'text',
 }: {
   text: string;
+  /** 'code' = कोड बाकस (.md-code), 'text' = व्याख्या (.md-body) — code box vs explanation text */
+  variant?: 'text' | 'code';
   /** Code block को "🔍 बुझाऊ" थिच्दा — called when "Explain" is pressed on a code block. */
   onExplainCode?: (code: string, language: string) => void;
   /** Code block को "🔧 फाइलमा लगाऊ" थिच्दा — called when "Preview & apply" is pressed on a code block. */
@@ -87,7 +90,7 @@ export function Markdown({
   return (
     <div
       ref={ref}
-      className="md-body"
+      className={variant === 'code' ? 'md-code' : 'md-body'}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );

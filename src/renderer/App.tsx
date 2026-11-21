@@ -26,6 +26,8 @@ import {
   type SearchMemory,
 } from './components/SearchDialog';
 import { ProblemsPanel, type Problem } from './components/ProblemsPanel';
+import { GuruCodeBox } from './components/GuruCodeBox';
+import type { CodeBlock } from './lib/splitCode';
 import {
   baseName,
   errorText,
@@ -34,7 +36,7 @@ import {
   rememberRecent,
   stripAnsi,
 } from './lib/helpers';
-import { getUiLang, setUiLang, tr, tr2, type UiLang } from './i18n';
+import { getUiLang, setUiLang, tr, type UiLang } from './i18n';
 import { LangSwitch } from './components/LangSwitch';
 import { analyzeOutput, type FixTip } from './lib/errorAnalyzer';
 import type {
@@ -117,6 +119,9 @@ export default function App() {
   const [searchSeed, setSearchSeed] = useState('');
   const [problems, setProblems] = useState<Problem[]>([]);
   const [problemsOpen, setProblemsOpen] = useState(false);
+  // 💻 Guru को कोड बाकस (मुख्य स्क्रिनमा), व्याख्या छेउको Guru बाकसमा — Guru's code box in front; the explanation stays in the side panel
+  const [guruCode, setGuruCode] = useState<CodeBlock[]>([]);
+  const applyCodeRef = useRef<((code: string) => void) | null>(null);
   const problemCursor = useRef(-1);
 
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -665,77 +670,63 @@ export default function App() {
     });
   };
 
-  const handlePendingHandled = useCallback(() => setPendingTutor(null), []);
+  /** Output मा छानेको/कपी गरेको पाठ मात्र, बटन थिचेपछि Guru लाई — only the text picked in the Output, sent when the button is clicked. */
+  const askGuruAboutSelection = (text: string) => {
+    const fence = '```';
+    setPendingTutor({
+      mode: 'fix',
+      label: tr('🩺 छानेको error बुझाऊ · Explain the error I picked'),
+      prompt: `Explain this error and give the fix. Keep it very short.\n\n${fence}\n${text.slice(0, 6000)}\n${fence}`,
+      context: { ...getContext(), runOutput: undefined },
+    });
+  };
 
-  // ✍️ लेख्दा बुझाऊ: नयाँ कोड लेखेर रोकिएपछि Guru ले नयाँ लाइन मात्र लाइन-लाइन, शब्द-शब्द बुझाउँछ।
-  // Explain as I type: after the learner writes new code and pauses, Guru explains only the new lines.
-  const typeSnap = useRef(new Map<string, Set<string>>());
-  const typeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
-  const lastTypeExplain = useRef(0);
-  const typeLive = useRef({ getContext, loggedIn: false });
-  typeLive.current = {
-    getContext,
-    loggedIn: Boolean(account.status?.loggedIn),
-  };
-  const lineKey = (l: string) => l.trim();
-  const meaningful = (l: string) =>
-    l.length >= 3 && /[A-Za-z0-9]/.test(l) && !/^(\/\/|#|\*|\/\*)/.test(l);
-  const rememberLines = (path: string, content: string) =>
-    typeSnap.current.set(
-      path,
-      new Set(content.split('\n').map(lineKey).filter(Boolean)),
-    );
-  const scheduleTypeExplain = (path: string, before: string) => {
-    if (!typeSnap.current.has(path)) rememberLines(path, before);
-    clearTimeout(typeTimer.current);
-    typeTimer.current = setTimeout(function check() {
-      let on = true;
+  /** कोड बाकसको कोड नयाँ फाइलमा राख्ने (भएको फाइल बदल्नुअघि सोध्ने) — save Guru's code as a file; ask before replacing an existing one */
+  const saveCodeAsFile = async (rel: string, code: string) => {
+    if (!project) return;
+    try {
+      const parts = rel.replace(/\\/g, '/').split('/').filter(Boolean);
+      const name = parts[parts.length - 1];
+      let dir = project.rootPath;
+      for (const seg of parts.slice(0, -1)) {
+        try {
+          dir = await window.studio.createFolder(dir, seg);
+        } catch {
+          dir = `${dir}\\${seg}`;
+        }
+      }
+      let file: string;
       try {
-        on = localStorage.getItem('studio.guruTypeExplain') === 'on';
+        file = await window.studio.createFile(dir, name);
       } catch {
-        // ignore
+        file = `${dir}\\${name}`;
+        if (
+          !window.confirm(
+            tr(
+              `${name} पहिल्यै छ। यो कोडले बदल्ने? — ${name} already exists. Replace it with this code?`,
+            ),
+          )
+        )
+          return;
       }
-      const live = typeLive.current;
-      const model = editorRef.current?.getModel();
-      if (!on || !live.loggedIn || !model) return;
-      const ctx = live.getContext();
-      if (!ctx.fileName || !path.endsWith(ctx.fileName)) return;
-      const wait = 25_000 - (Date.now() - lastTypeExplain.current);
-      if (wait > 0) {
-        typeTimer.current = setTimeout(check, wait);
-        return;
-      }
-      // गल्ती भएको बेला Guru ले पहिले गल्ती बुझाउँछ — while there are errors, the error explainer goes first.
-      const errs = monaco.editor
-        .getModelMarkers({ resource: model.uri })
-        .filter((m) => m.severity === monaco.MarkerSeverity.Error);
-      if (errs.length) return;
-      const known = typeSnap.current.get(path) ?? new Set<string>();
-      const text = model.getValue();
-      const fresh = text
-        .split('\n')
-        .filter((l) => !known.has(lineKey(l)) && meaningful(lineKey(l)));
-      if (!fresh.length) return;
-      rememberLines(path, text);
-      lastTypeExplain.current = Date.now();
-      setPendingTutor({
-        mode: 'explain',
-        label: tr2(
-          `✍️ तपाईंले लेखेका ${fresh.length} नयाँ लाइन बुझाऊ`,
-          `✍️ Explain the ${fresh.length} new line(s) you wrote`,
-        ),
-        prompt:
-          'I just wrote the new lines below in my file. Explain each new line and each word/symbol in it, in very simple words, and tell me if anything looks wrong or could be better.',
-        context: {
-          ...ctx,
-          selection: fresh.slice(0, 40).join('\n'),
-          runOutput: undefined,
-        },
-      });
-    }, 4000);
+      await window.studio.writeFile(file, code);
+      setTreeVersion((v) => v + 1);
+      if (tabs.some((t) => samePath(t.path, file)))
+        setTabs((prev) =>
+          prev.map((t) =>
+            samePath(t.path, file)
+              ? { ...t, content: code, savedContent: code }
+              : t,
+          ),
+        );
+      await jumpTo(file, 1);
+      showToast(tr(`📄 ${name} मा राखियो · Saved to ${name}`));
+    } catch (err) {
+      showError(errorText(err));
+    }
   };
+
+  const handlePendingHandled = useCallback(() => setPendingTutor(null), []);
 
   // ---------- Smart Error Analyzer ----------
   // अन्तिम run को output मात्र पढ्ने — analyse only the latest run's output.
@@ -1519,10 +1510,6 @@ export default function App() {
                   onSelect={setActivePath}
                   onClose={closeTab}
                   onChange={(path, content) => {
-                    scheduleTypeExplain(
-                      path,
-                      tabs.find((t) => t.path === path)?.content ?? '',
-                    );
                     setTabs((prev) =>
                       prev.map((t) =>
                         t.path === path ? { ...t, content } : t,
@@ -1537,6 +1524,14 @@ export default function App() {
                   }}
                 />
               </div>
+              {guruCode.length > 0 && (
+                <GuruCodeBox
+                  blocks={guruCode}
+                  onApply={(code) => applyCodeRef.current?.(code)}
+                  onNewFile={(p, c) => void saveCodeAsFile(p, c)}
+                  onClose={() => setGuruCode([])}
+                />
+              )}
               {problemsOpen && (
                 <ProblemsPanel
                   problems={problems}
@@ -1555,6 +1550,7 @@ export default function App() {
                     onKey={(k) => void window.studio.sendRunKey(k)}
                     onClear={() => setConsoleLines([])}
                     onAskGuru={askGuruAboutOutput}
+                    onAskSelection={askGuruAboutSelection}
                     onHide={() => setConsoleOpen(false)}
                     tips={tips}
                     onOpenTip={(tip) => void openTip(tip)}
@@ -1592,6 +1588,7 @@ export default function App() {
                   onKey={() => undefined}
                   onClear={() => setConsoleLines([])}
                   onAskGuru={askGuruAboutOutput}
+                  onAskSelection={askGuruAboutSelection}
                   onHide={() => setConsoleLines([])}
                 />
               </div>
@@ -1623,6 +1620,8 @@ export default function App() {
                 : null
             }
             onVoiceCommand={handleVoiceCommand}
+            onCode={setGuruCode}
+            applyRef={applyCodeRef}
             onApplyToFile={(content) => {
               if (!activePath) return;
               setTabs((prev) =>

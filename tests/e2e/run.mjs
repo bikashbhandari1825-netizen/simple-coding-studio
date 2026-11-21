@@ -645,6 +645,82 @@ function tests(fixture) {
       },
     },
     {
+      name: 'Output: errors are red; picking error text shows "Ask Guru AI" and sends nothing by itself',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          const guruBefore = [...document.querySelectorAll('aside')].pop().querySelectorAll('[data-answer], .md-body').length;
+          const errLines = [...document.querySelectorAll('[data-testid=output-box] [data-error-line]')];
+          const noBtnBefore = !document.querySelector('[data-testid=ask-guru-selection]');
+          const el = errLines[0];
+          if (!el) return { error: 'no red error line in the Output' };
+          const color = el.className;
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          document.querySelector('[data-testid=output-box]').dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          const btn = await __t.until(() => document.querySelector('[data-testid=ask-guru-selection]'), 4000);
+          await __t.wait(2500);
+          const guruAfter = [...document.querySelectorAll('aside')].pop().querySelectorAll('[data-answer], .md-body').length;
+          const busy = [...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹');
+          const label = btn ? btn.innerText : '';
+          // छनोट हटाउँदा बटन हराउँछ — the button goes away when nothing is selected
+          sel.removeAllRanges();
+          document.querySelector('[data-testid=output-box]').dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          await __t.wait(300);
+          return { noBtnBefore, color, label, sentByItself: guruAfter !== guruBefore || busy, gone: !document.querySelector('[data-testid=ask-guru-selection]'), n: errLines.length };
+        })()`);
+        if (r.error) throw new Error(r.error);
+        if (!r.noBtnBefore)
+          throw new Error('button shown before anything was picked');
+        if (!/Ask Guru AI|गुरु AI/.test(r.label))
+          throw new Error(
+            'no "Ask Guru AI" button after picking error text: ' +
+              JSON.stringify(r),
+          );
+        if (r.sentByItself)
+          throw new Error(
+            'Guru was called without a click: ' + JSON.stringify(r),
+          );
+        if (!r.gone)
+          throw new Error('button stayed after the selection was cleared');
+        if (!r.color.includes('text-red-400'))
+          throw new Error('error line is not red: ' + r.color);
+        return r.n + ' red error line(s)';
+      },
+    },
+    {
+      name: 'Explanation box: instant plain English + Nepali notice for an editor mistake; green when fine',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          await __t.open('app.js');
+          const hints = await __t.until(() => document.querySelector('[data-testid=error-hints]')?.innerText, 15000);
+          const bad = { hints: hints ?? '', allGoodWhileBroken: Boolean(document.querySelector('[data-testid=all-good]')) };
+          await __t.open('ok.dart');
+          const good = await __t.until(() => document.querySelector('[data-testid=all-good]'), 30000);
+          return { bad, good: Boolean(good), goodText: good?.innerText ?? '' };
+        })()`);
+        const lines = r.bad.hints
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean);
+        const en = lines.findIndex(
+          (l) => /^[A-Za-z]/.test(l) && !/^line /i.test(l),
+        );
+        const ne = lines.findIndex((l) => /[ऀ-ॿ]/.test(l) && !/line/.test(l));
+        if (en < 0 || ne < 0)
+          throw new Error('hint is not bilingual: ' + r.bad.hints);
+        if (en > ne)
+          throw new Error('Nepali came before English: ' + r.bad.hints);
+        if (r.bad.allGoodWhileBroken)
+          throw new Error('green "all good" shown while there is an error');
+        if (!r.good)
+          throw new Error('no green "all good" notice for a clean file');
+        return lines.slice(0, 3).join(' | ');
+      },
+    },
+    {
       name: 'Voice typing service (Web Speech API, ne-NP) starts and stops',
       run: async (p) => {
         const r = await p.eval(
@@ -792,15 +868,16 @@ function tests(fixture) {
                 await __t.wait(800);
                 const btn = await __t.until(() => [...document.querySelectorAll('aside button')].find((b) => /📖/.test(b.innerText) && !b.disabled), 10000, 250);
                 if (!btn) return { error: 'no explain button: ' + [...document.querySelectorAll('aside button')].map((b) => b.innerText.trim().slice(0, 14) + (b.disabled ? '(off)' : '')).join(' | ') };
-                const before = document.querySelectorAll('aside .md-body').length;
+                const before = document.querySelectorAll('aside [data-answer]').length;
                 btn.click();
                 await __t.wait(1500);
-                await __t.until(() => document.querySelectorAll('aside .md-body').length > before && (window.studio.stopSpeaking(), true) && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 200000, 500);
+                await __t.until(() => document.querySelectorAll('aside [data-answer]').length > before && (window.studio.stopSpeaking(), true) && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 200000, 500);
                 await window.studio.stopSpeaking();
-                const card = [...document.querySelectorAll('aside .md-body')].pop();
+                const card = [...document.querySelectorAll('aside [data-answer]')].pop();
                 const clone = card.cloneNode(true);
                 clone.querySelectorAll('pre').forEach((x) => x.remove());
-                const lines = clone.innerText.split('\\n').map((l) => l.trim()).filter(Boolean);
+                clone.querySelectorAll('[data-testid=explain-box] > div:first-child').forEach((x) => x.remove());
+                const lines = card.innerText.split('\\n').map((l) => l.trim()).filter((l) => l && !/^(📝|💻)/.test(l));
                 const ne = lines.findIndex((l) => /^\\W*नेपाली\\W*$/.test(l));
                 const tail = lines.findIndex((l) => /📚/.test(l));
                 const english = lines.slice(0, ne < 0 ? lines.length : ne).filter((_, k) => tail < 0 || k < tail).join(' ');
@@ -831,16 +908,15 @@ function tests(fixture) {
                 Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, 'Dart मा दुई नम्बर जोड्ने function को कोड देऊ');
                 ta.dispatchEvent(new Event('input', { bubbles: true }));
                 await __t.wait(200);
-                const before = document.querySelectorAll('aside .md-body').length;
+                const before = document.querySelectorAll('aside [data-answer]').length;
                 (await __t.until(() => [...document.querySelectorAll('aside button')].find((b) => b.innerText.trim() === '➤' && !b.disabled), 120000, 250)).click();
                 await __t.wait(1500);
-                await __t.until(() => document.querySelectorAll('aside .md-body').length > before && (window.studio.stopSpeaking(), true) && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 200000, 500);
+                await __t.until(() => document.querySelectorAll('aside [data-answer]').length > before && (window.studio.stopSpeaking(), true) && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 200000, 500);
                 await window.studio.stopSpeaking();
-                const card = [...document.querySelectorAll('aside .md-body')].pop();
-                const clone = card.cloneNode(true);
-                const code = clone.querySelectorAll('pre').length;
-                clone.querySelectorAll('pre').forEach((x) => x.remove());
-                const text = clone.innerText;
+                const card = [...document.querySelectorAll('aside [data-answer]')].pop();
+                const codeBox = document.querySelector('[data-testid=guru-code-box]');
+                const code = codeBox ? codeBox.querySelectorAll('[data-testid=code-tab]').length : 0;
+                const text = card.innerText;
                 return { code, words: text.split(' ').filter(Boolean).length, quiz: card.innerHTML.includes('quiz') || /quiz|प्रश्न/i.test(text), asks: /\\?\\s*$/.test(text.trim()) || /say yes|shall I|चाहनुहुन्छ|भन्नुहोस् भने/i.test(text), head: text.slice(0, 120) };
               })()`,
                 260000,
@@ -868,18 +944,25 @@ function tests(fixture) {
                 Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, 'मलाई Flutter मा सानो counter एप बनाइदेऊ, पूरा कोड सहित।');
                 ta.dispatchEvent(new Event('input', { bubbles: true }));
                 await __t.wait(200);
-                const before = document.querySelectorAll('aside .md-body').length;
+                const before = document.querySelectorAll('aside [data-answer]').length;
                 (await __t.until(() => [...document.querySelectorAll('aside button')].find((b) => b.innerText.trim() === '➤' && !b.disabled), 120000, 250)).click();
                 await __t.wait(1500);
                 const t0 = performance.now();
-                await __t.until(() => document.querySelectorAll('aside .md-body').length > before && (window.studio.stopSpeaking(), true) && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 280000, 500);
-                const card = [...document.querySelectorAll('aside .md-body')].pop();
+                await __t.until(() => document.querySelectorAll('aside [data-answer]').length > before && (window.studio.stopSpeaking(), true) && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 280000, 500);
+                const card = [...document.querySelectorAll('aside [data-answer]')].pop();
                 await window.studio.stopSpeaking();
-                const blocks = [...card.querySelectorAll('pre')].map((x) => x.innerText);
-                return { ms: Math.round(performance.now() - t0), n: blocks.length, hasMain: /void main\\(/.test(blocks.join(' ')) && /runApp\\(/.test(blocks.join(' ')), hasState: blocks.some((b) => /(StatefulWidget|setState|ChangeNotifier|ValueNotifier)/.test(b)), chars: blocks.join('').length, head: card.innerText.slice(0, 80) };
+                const box = document.querySelector('[data-testid=guru-code-box]');
+                const blocks = [];
+                for (const tab of box ? [...box.querySelectorAll('[data-testid=code-tab]')] : []) { tab.click(); await __t.wait(150); blocks.push(box.querySelector('[data-testid=code-text]').innerText); }
+                const boxes = { code: blocks.length, preInChat: card.querySelectorAll('pre').length };
+                return { boxes, ms: Math.round(performance.now() - t0), n: blocks.length, hasMain: /void main\\(/.test(blocks.join(' ')) && /runApp\\(/.test(blocks.join(' ')), hasState: blocks.some((b) => /(StatefulWidget|setState|ChangeNotifier|ValueNotifier)/.test(b)), chars: blocks.join('').length, head: card.innerText.slice(0, 80) };
               })()`,
                 300000,
               );
+              if (r.boxes.code < 1 || r.boxes.preInChat > 0)
+                throw new Error(
+                  'code is not in its own box: ' + JSON.stringify(r.boxes),
+                );
               if (!r.hasMain)
                 throw new Error(
                   'no complete main.dart in the answer: ' + JSON.stringify(r),
