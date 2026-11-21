@@ -5,6 +5,8 @@ import type { CodeBlock } from '../lib/splitCode';
 /** क्रम नम्बर सहितको कोड (Code 1, Code 2, …) — a code block with its running number */
 export interface NumberedBlock extends CodeBlock {
   n: number;
+  /** कुन जवाफबाट आयो — which Guru answer it came from */
+  batch: number;
 }
 
 /**
@@ -21,7 +23,7 @@ export function GuruCodeBox({
   onClear,
   onClose,
   status = [],
-  unlockedCount = 9999,
+  unlocked = [],
   onUnlock,
 }: {
   blocks: NumberedBlock[];
@@ -38,7 +40,7 @@ export function GuruCodeBox({
   /** हरेक Code को अवस्था — state of each step */
   status?: ('todo' | 'green' | 'red')[];
   /** कति Code खुला छन् — how many steps are unlocked */
-  unlockedCount?: number;
+  unlocked?: boolean[];
   onUnlock?: (index: number) => void;
 }) {
   const [index, setIndex] = useState(focusIndex);
@@ -48,9 +50,10 @@ export function GuruCodeBox({
   const block = blocks[Math.min(index, blocks.length - 1)];
   if (!block) return null;
   const bi = Math.min(index, blocks.length - 1);
-  const locked = bi >= unlockedCount;
+  const isLocked = (i: number) => unlocked[i] === false;
+  const locked = isLocked(bi);
   const icon = (i: number) =>
-    i >= unlockedCount
+    isLocked(i)
       ? '🔒 '
       : status[i] === 'green'
         ? '✅ '
@@ -79,7 +82,7 @@ export function GuruCodeBox({
                   ? 'bg-emerald-600 text-white'
                   : status[i] === 'red'
                     ? 'bg-red-900 text-red-100 hover:bg-red-800'
-                    : i >= unlockedCount
+                    : isLocked(i)
                       ? 'bg-slate-900 text-slate-500 hover:bg-slate-800'
                       : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
               }`}

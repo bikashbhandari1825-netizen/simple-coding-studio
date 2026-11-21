@@ -129,7 +129,11 @@ export default function App() {
       setCodeFocus(prev.length);
       return [
         ...prev,
-        ...blocks.map((b, i) => ({ ...b, n: prev.length + i + 1 })),
+        ...blocks.map((b, i) => ({
+          ...b,
+          n: prev.length + i + 1,
+          batch: (prev[prev.length - 1]?.batch ?? 0) + 1,
+        })),
       ];
     });
     setCodeOpen(true);
@@ -174,22 +178,25 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guruCode, tabs, markerTick]);
   // अर्को Code खुल्ने: अघिल्लो हरियो (र कोड फाइल भए Run सफल) — next Code unlocks when the previous is green (and a code file ran OK)
-  const unlockedCount = useMemo(() => {
-    let n = 1;
-    while (n < guruCode.length) {
-      const prev = guruCode[n - 1];
-      const configFile = /\.(ya?ml|json|md|txt|toml|lock)$/i.test(
+  const unlocked = useMemo(() => {
+    const out: boolean[] = [];
+    guruCode.forEach((b, i) => {
+      const prev = guruCode[i - 1];
+      if (!prev || prev.batch !== b.batch || unlockedExtra.includes(i)) {
+        out.push(true); // हरेक जवाफको पहिलो Code सधैं खुला — the first Code of every answer is always open
+        return;
+      }
+      const configFile = /.(ya?ml|json|md|txt|toml|lock)$/i.test(
         prev.title ?? '',
       );
-      const done =
-        unlockedExtra.includes(n) ||
-        !prev.title ||
-        (stepStatus[n - 1] === 'green' &&
-          (configFile || lastRun?.state === 'ok'));
-      if (!done) break;
-      n++;
-    }
-    return n;
+      out.push(
+        out[i - 1] &&
+          (!prev.title ||
+            (stepStatus[i - 1] === 'green' &&
+              (configFile || lastRun?.state === 'ok'))),
+      );
+    });
+    return out;
   }, [guruCode, stepStatus, lastRun, unlockedExtra]);
   const problemCursor = useRef(-1);
 
@@ -1598,7 +1605,7 @@ export default function App() {
                   blocks={guruCode}
                   focusIndex={codeFocus}
                   status={stepStatus}
-                  unlockedCount={unlockedCount}
+                  unlocked={unlocked}
                   onUnlock={(i) => setUnlockedExtra((u) => [...u, i])}
                   onClear={() => {
                     setGuruCode([]);

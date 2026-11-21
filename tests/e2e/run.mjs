@@ -953,7 +953,7 @@ function tests(fixture) {
                 await window.studio.stopSpeaking();
                 const box = document.querySelector('[data-testid=guru-code-box]');
                 const blocks = [];
-                for (const tab of box ? [...box.querySelectorAll('[data-testid=code-tab]')] : []) { tab.click(); await __t.wait(150); blocks.push(box.querySelector('[data-testid=code-text]').innerText); }
+                for (const tab of box ? [...box.querySelectorAll('[data-testid=code-tab]')] : []) { tab.click(); await __t.wait(150); box.querySelector('[data-testid=code-unlock]')?.click(); await __t.wait(150); blocks.push(box.querySelector('[data-testid=code-text]').innerText); }
                 const boxes = { code: blocks.length, preInChat: card.querySelectorAll('pre').length };
                 return { boxes, ms: Math.round(performance.now() - t0), n: blocks.length, hasMain: /void main\\(/.test(blocks.join(' ')) && /runApp\\(/.test(blocks.join(' ')), hasState: blocks.some((b) => /(StatefulWidget|setState|ChangeNotifier|ValueNotifier)/.test(b)), chars: blocks.join('').length, head: card.innerText.slice(0, 80) };
               })()`,
@@ -1001,11 +1001,17 @@ function tests(fixture) {
               })()`,
                 30000,
               );
-              if (!/zz_step\.yaml/.test(r.head1) || !/first config/.test(r.head1))
+              if (
+                !/zz_step\.yaml/.test(r.head1) ||
+                !/first config/.test(r.head1)
+              )
                 throw new Error('no file header: ' + JSON.stringify(r));
               if (!r.locked || !r.lockIcon)
                 throw new Error('next step not locked: ' + JSON.stringify(r));
-              if (!/void main/.test(r.open) || !/lib\/zz_step\.dart/.test(r.head2))
+              if (
+                !/void main/.test(r.open) ||
+                !/lib\/zz_step\.dart/.test(r.head2)
+              )
                 throw new Error('unlock failed: ' + JSON.stringify(r));
             },
           },
