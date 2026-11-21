@@ -72,4 +72,10 @@ eq(
   hintFor('something odd', 7).en.includes('line 7'),
   true,
 );
+const pl = splitCode(
+  'Plan\n\n`lib/main.dart` — app entry, replace whole file\n\n```dart\nvoid main() {}\n```',
+);
+eq('placement: title', pl.blocks[0].title, 'lib/main.dart');
+eq('placement: note', pl.blocks[0].place, 'app entry, replace whole file');
+eq('placement: plan text kept', pl.text, 'Plan');
 process.exit(bad ? 1 : 0);

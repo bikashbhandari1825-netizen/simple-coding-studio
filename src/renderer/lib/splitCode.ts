@@ -4,6 +4,8 @@
 export interface CodeBlock {
   /** फाइलको नाम/बाटो (कोड माथिको लाइन), भए — the file path on the line just above the block, if any */
   title?: string;
+  /** कहाँ राख्ने (छोटो टिप्पणी) — where/how to place it, if given */
+  place?: string;
   /** भाषा (``` पछिको शब्द) — the language after the fence */
   language: string;
   /** कोड मात्र, ``` बिना — the code only, without fences */
@@ -19,15 +21,17 @@ export interface SplitAnswer {
 }
 
 // `lib/main.dart` / **pubspec.yaml** / lib/main.dart: — कोड माथिको फाइल बाटो
-const PATH_LINE = /^[\s`*_#>-]*([\w./\\-]+\.[A-Za-z0-9]{1,6})[\s`*_:]*$/;
+const PATH_LINE =
+  /^[\s`*_#>-]*([\w./\\-]+\.[A-Za-z0-9]{1,6})[\s`*_:]*(?:[—–]\s*(.{1,80}?))?[\s`*_]*$/;
 
-function makeBlock(lines: string[], title?: string): CodeBlock {
+function makeBlock(lines: string[], title?: string, place?: string): CodeBlock {
   const language = lines[0].trim().slice(3).trim().split(/\s+/)[0] ?? '';
   const closed =
     lines.length > 1 && lines[lines.length - 1].trim().startsWith('```');
   const inner = lines.slice(1, closed ? -1 : undefined);
   return {
     title,
+    place,
     language,
     code: inner.join('\n'),
     markdown: lines.join('\n'),
@@ -39,6 +43,7 @@ export function splitCode(markdown: string): SplitAnswer {
   const blocks: CodeBlock[] = [];
   let current: string[] | null = null;
   let title: string | undefined;
+  let place: string | undefined;
   for (const line of markdown.split('\n')) {
     const fence = line.trim().startsWith('```');
     if (current === null) {
@@ -51,19 +56,21 @@ export function splitCode(markdown: string): SplitAnswer {
       while (k >= 0 && !text[k].trim()) k--;
       const m = k >= 0 ? PATH_LINE.exec(text[k]) : null;
       title = m ? m[1] : undefined;
+      place = m?.[2]?.replace(/[`*_]+/g, '').trim() || undefined;
       if (m) text.splice(k, 1);
       current = [line];
     } else {
       current.push(line);
       if (fence) {
-        blocks.push(makeBlock(current, title));
+        blocks.push(makeBlock(current, title, place));
         current = null;
         title = undefined;
+        place = undefined;
       }
     }
   }
   // लेखिँदै गरेको (बन्द नभएको) block पनि कोड बाकसमा — an unfinished block still goes to the code box
-  if (current) blocks.push(makeBlock(current, title));
+  if (current) blocks.push(makeBlock(current, title, place));
   return {
     text: text
       .join('\n')

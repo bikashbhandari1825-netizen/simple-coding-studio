@@ -20,6 +20,9 @@ export function GuruCodeBox({
   onNewFile,
   onClear,
   onClose,
+  status = [],
+  unlockedCount = 9999,
+  onUnlock,
 }: {
   blocks: NumberedBlock[];
   /** नयाँ जवाफ आउँदा खुल्ने पहिलो नयाँ ट्याब — the first tab of the newest answer, selected when it arrives */
@@ -32,6 +35,11 @@ export function GuruCodeBox({
   onClear: () => void;
   /** बाकस लुकाउने (कोड रहन्छ) — hide the box (the code is kept) */
   onClose: () => void;
+  /** हरेक Code को अवस्था — state of each step */
+  status?: ('todo' | 'green' | 'red')[];
+  /** कति Code खुला छन् — how many steps are unlocked */
+  unlockedCount?: number;
+  onUnlock?: (index: number) => void;
 }) {
   const [index, setIndex] = useState(focusIndex);
   const [copied, setCopied] = useState(false);
@@ -39,6 +47,16 @@ export function GuruCodeBox({
   useEffect(() => setIndex(focusIndex), [focusIndex, blocks.length]);
   const block = blocks[Math.min(index, blocks.length - 1)];
   if (!block) return null;
+  const bi = Math.min(index, blocks.length - 1);
+  const locked = bi >= unlockedCount;
+  const icon = (i: number) =>
+    i >= unlockedCount
+      ? '🔒 '
+      : status[i] === 'green'
+        ? '✅ '
+        : status[i] === 'red'
+          ? '❌ '
+          : '';
 
   return (
     <div
@@ -59,9 +77,14 @@ export function GuruCodeBox({
               className={`shrink-0 rounded px-2 py-0.5 font-mono text-[12px] font-bold ${
                 i === index
                   ? 'bg-emerald-600 text-white'
-                  : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                  : status[i] === 'red'
+                    ? 'bg-red-900 text-red-100 hover:bg-red-800'
+                    : i >= unlockedCount
+                      ? 'bg-slate-900 text-slate-500 hover:bg-slate-800'
+                      : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
               }`}
             >
+              {icon(i)}
               {`Code ${b.n}`}
               {b.title ? ` · ${b.title}` : ''}
             </button>
@@ -125,12 +148,69 @@ export function GuruCodeBox({
           ▾
         </button>
       </div>
-      <pre
-        data-testid="code-text"
-        className="min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[15px] leading-6 font-semibold whitespace-pre text-emerald-50"
+      <div
+        data-testid="code-target"
+        className="flex items-center gap-2 border-b border-slate-800 px-3 py-1 font-mono text-[13px] font-bold"
       >
-        {block.code}
-      </pre>
+        <span className="text-emerald-300">
+          {block.title
+            ? `📄 ${block.title}`
+            : tr('📄 फाइल नाम छैन · no file name')}
+        </span>
+        {block.place && <span className="text-slate-300">— {block.place}</span>}
+        <span
+          data-testid="code-status"
+          className={
+            status[bi] === 'green'
+              ? 'ml-auto text-emerald-400'
+              : status[bi] === 'red'
+                ? 'ml-auto text-red-400'
+                : 'ml-auto text-slate-400'
+          }
+        >
+          {locked
+            ? tr(
+                '🔒 अघिल्लो Code हरियो भएपछि खुल्छ · Unlocks after the previous Code is green and runs',
+              )
+            : status[bi] === 'green'
+              ? tr('✅ पूरा · Complete')
+              : status[bi] === 'red'
+                ? tr('❌ गल्ती छ · Has errors')
+                : tr(
+                    '✍️ यो फाइलमा टाइप/पेस्ट गर्नुहोस् · Type or paste into this file',
+                  )}
+        </span>
+      </div>
+      {locked ? (
+        <div
+          data-testid="code-locked"
+          className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-sm font-semibold text-slate-300"
+        >
+          <span>
+            {tr(
+              '🔒 Code ' +
+                block.n +
+                ' पर्खाइमा छ · waiting — finish the earlier Code first, then run',
+            )}
+          </span>
+          {onUnlock && (
+            <button
+              className="chip"
+              data-testid="code-unlock"
+              onClick={() => onUnlock(bi)}
+            >
+              {tr('🔓 अहिले नै खोल · Unlock now')}
+            </button>
+          )}
+        </div>
+      ) : (
+        <pre
+          data-testid="code-text"
+          className="min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[15px] leading-6 font-semibold whitespace-pre text-emerald-50"
+        >
+          {block.code}
+        </pre>
+      )}
     </div>
   );
 }

@@ -975,6 +975,41 @@ function tests(fixture) {
             },
           },
           {
+            name: 'Code steps: target file header, locked next step, unlock',
+            run: async (p) => {
+              const r = await p.eval(
+                `(async () => {
+                window.__addGuruCode([
+                  { title: 'zz_step.yaml', place: 'first config', language: 'yaml', code: 'name: demo', markdown: '' },
+                  { title: 'lib/zz_step.dart', place: 'app entry', language: 'dart', code: 'void main() {}', markdown: '' },
+                ]);
+                await __t.wait(500);
+                const tabs = () => [...document.querySelectorAll('[data-testid=code-tab]')];
+                const first = tabs().length - 2;
+                tabs()[first].click();
+                await __t.wait(200);
+                const head1 = document.querySelector('[data-testid=code-target]')?.innerText ?? '';
+                tabs()[first + 1].click();
+                await __t.wait(200);
+                const locked = Boolean(document.querySelector('[data-testid=code-locked]'));
+                const lockIcon = tabs()[first + 1].innerText.includes('🔒');
+                document.querySelector('[data-testid=code-unlock]').click();
+                await __t.wait(300);
+                const open = document.querySelector('[data-testid=code-text]')?.innerText ?? '';
+                const head2 = document.querySelector('[data-testid=code-target]')?.innerText ?? '';
+                return { head1, locked, lockIcon, open, head2 };
+              })()`,
+                30000,
+              );
+              if (!/zz_step\.yaml/.test(r.head1) || !/first config/.test(r.head1))
+                throw new Error('no file header: ' + JSON.stringify(r));
+              if (!r.locked || !r.lockIcon)
+                throw new Error('next step not locked: ' + JSON.stringify(r));
+              if (!/void main/.test(r.open) || !/lib\/zz_step\.dart/.test(r.head2))
+                throw new Error('unlock failed: ' + JSON.stringify(r));
+            },
+          },
+          {
             name: 'Problems panel: "Fix with Guru" jumps to the file and asks Guru',
             run: async (p) => {
               const r = await p.eval(

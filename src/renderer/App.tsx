@@ -135,6 +135,62 @@ export default function App() {
     setCodeOpen(true);
   }, []);
   const applyCodeRef = useRef<((code: string) => void) | null>(null);
+  // परीक्षणका लागि: कोड ट्याब सिधै थप्ने — a hook so the end-to-end tests can add Code blocks without asking Guru
+  useEffect(() => {
+    (window as unknown as { __addGuruCode?: unknown }).__addGuruCode =
+      addGuruCode;
+  }, [addGuruCode]);
+  // 🟢 हरेक Code को अवस्था: todo / red (गल्ती) / green (पूरा, गल्ती छैन) — each step's state, from the matching open file
+  const [markerTick, setMarkerTick] = useState(0);
+  const [unlockedExtra, setUnlockedExtra] = useState<number[]>([]);
+  useEffect(() => {
+    const sub = monaco.editor.onDidChangeMarkers(() =>
+      setMarkerTick((t) => t + 1),
+    );
+    return () => sub.dispose();
+  }, []);
+  const stepStatus = useMemo(() => {
+    const squash = (t: string) => t.replace(/\s+/g, '');
+    const slashes = (p: string) => p.split('\\').join('/');
+    return guruCode.map((b): 'todo' | 'green' | 'red' => {
+      if (!b.title) return 'todo';
+      const want = '/' + slashes(b.title).replace(/^\.?\//, '');
+      const tab = tabs.find((t) =>
+        ('/' + slashes(t.path)).toLowerCase().endsWith(want.toLowerCase()),
+      );
+      if (!tab) return 'todo';
+      const model = monaco.editor.getModel(monaco.Uri.parse(tab.path));
+      const bad = model
+        ? monaco.editor
+            .getModelMarkers({ resource: model.uri })
+            .some((m) => m.severity === monaco.MarkerSeverity.Error)
+        : false;
+      if (bad) return 'red';
+      const need = squash(b.code).length;
+      return need > 0 && squash(tab.content).length >= need * 0.9
+        ? 'green'
+        : 'todo';
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guruCode, tabs, markerTick]);
+  // अर्को Code खुल्ने: अघिल्लो हरियो (र कोड फाइल भए Run सफल) — next Code unlocks when the previous is green (and a code file ran OK)
+  const unlockedCount = useMemo(() => {
+    let n = 1;
+    while (n < guruCode.length) {
+      const prev = guruCode[n - 1];
+      const configFile = /\.(ya?ml|json|md|txt|toml|lock)$/i.test(
+        prev.title ?? '',
+      );
+      const done =
+        unlockedExtra.includes(n) ||
+        !prev.title ||
+        (stepStatus[n - 1] === 'green' &&
+          (configFile || lastRun?.state === 'ok'));
+      if (!done) break;
+      n++;
+    }
+    return n;
+  }, [guruCode, stepStatus, lastRun, unlockedExtra]);
   const problemCursor = useRef(-1);
 
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -1541,8 +1597,12 @@ export default function App() {
                 <GuruCodeBox
                   blocks={guruCode}
                   focusIndex={codeFocus}
+                  status={stepStatus}
+                  unlockedCount={unlockedCount}
+                  onUnlock={(i) => setUnlockedExtra((u) => [...u, i])}
                   onClear={() => {
                     setGuruCode([]);
+                    setUnlockedExtra([]);
                     setCodeFocus(0);
                   }}
                   onApply={(code) => applyCodeRef.current?.(code)}
