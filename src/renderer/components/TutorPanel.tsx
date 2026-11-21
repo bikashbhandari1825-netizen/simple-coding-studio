@@ -16,6 +16,7 @@ import { useVoiceInput } from '../voice/useVoiceInput';
 import { Markdown } from './Markdown';
 import { DiffDialog } from './Dialogs';
 import { firstCodeBlock, mergeSnippet } from '../lib/diff';
+import { englishFirst } from '../lib/englishFirst';
 import { getUiLang, tr, tr2 } from '../i18n';
 import { VoiceWave } from '../voice/VoiceWave';
 import { SpeakWave } from '../voice/SpeakWave';
@@ -882,11 +883,20 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
           ) : (
             <div
               key={item.id}
+              data-order-fixed={
+                !item.streaming && englishFirst(item.content).changed
+                  ? '1'
+                  : undefined
+              }
               className="rounded-2xl rounded-tl-md border border-white/10 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)] backdrop-blur"
             >
               {item.content ? (
                 (() => {
-                  const b = splitBlocks(item.content, item.streaming);
+                  // क्रम सुरक्षा: नेपाली अघि लेखिएको भए English पहिले देखाउने — show English first even if the model wrote Nepali first
+                  const shown = item.streaming
+                    ? item.content
+                    : englishFirst(item.content).text;
+                  const b = splitBlocks(shown, item.streaming);
                   return (
                     <>
                       {b.markdown && (

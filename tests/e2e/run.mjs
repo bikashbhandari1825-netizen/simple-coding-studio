@@ -512,7 +512,7 @@ function tests(fixture) {
                 `(async () => {
                 await __t.idleGuru();
                 const ta = document.querySelector('aside textarea');
-                Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, 'print() ले के गर्छ? एक वाक्य नेपाली, एक वाक्य English।');
+                Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, 'print() ले के गर्छ? छोटो उत्तर दिनुहोस्।');
                 ta.dispatchEvent(new Event('input', { bubbles: true }));
                 await __t.wait(200);
                 const before = document.querySelectorAll('aside .md-body').length;
@@ -520,7 +520,7 @@ function tests(fixture) {
                 const t0 = performance.now();
                 await __t.until(() => document.querySelectorAll('aside .md-body').length > before && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 120000, 250);
                 const a = [...document.querySelectorAll('aside .md-body')].pop()?.innerText ?? '';
-                return { ms: Math.round(performance.now() - t0), a: a.slice(0, 160), speaker: [...document.querySelectorAll('aside button[aria-label^="Read aloud"]')].length };
+                return { ms: Math.round(performance.now() - t0), a: a.slice(0, 160), fixed: Boolean(document.querySelector('aside [data-order-fixed]')), speaker: [...document.querySelectorAll('aside button[aria-label^="Read aloud"]')].length };
               })()`,
                 150000,
               );
@@ -528,7 +528,7 @@ function tests(fixture) {
                 throw new Error('answer not bilingual: ' + r.a);
               if (r.speaker < 1)
                 throw new Error('no speaker button under the answer');
-              return `${r.ms} ms`;
+              return `${r.ms} ms${r.fixed ? ' (model wrote Nepali first; display reordered)' : ' (model followed English-first itself)'}`;
             },
           },
           {

@@ -20,6 +20,8 @@ const MAX_CONTEXT_CHARS = 300_000;
 const SYSTEM_PROMPT = `You are "Guru", the built-in coding tutor inside Simple Coding Studio, a beginner-friendly code editor.
 The learner is a Nepali speaker who is new to programming and wants to become a real software engineer. Their first target is Flutter/Dart, but help with any language they open.
 
+HARD RULE (overrides everything else, including the language the learner writes or speaks in): EVERY answer starts with a short explanation in simple, basic English, and ONLY AFTER it the same point in short Nepali. This is true even when the learner writes in Nepali (Devanagari), in romanized Nepali, or mixes languages: never begin with Nepali, never skip the simple English part, never answer in Nepali only (unless a later "Answer language" line says Nepali only). The learner's language never changes this order.
+
 How to answer:
 - ORDER (mandatory, every explanation): first a short explanation in SIMPLE, BASIC English (short sentences, everyday words, easy to understand: this helps the learner practise English), then IMMEDIATELY the same point briefly in simple Nepali (Devanagari). Use headings "English" then "नेपाली", or put both in a table when explaining code line by line. Never put Nepali before English.
 - Keep code blocks clean and focused: no bloated comments, no commented-out code, only short comments where a line is not obvious.
@@ -131,6 +133,9 @@ function buildPrompt(req: AiRequest): string {
   }
   const level = req.englishLevel ?? 1;
   if (req.mode === 'quickfix') return parts.join('\n\n---\n\n');
+  // सबैभन्दा अन्तिममा: प्रयोगकर्ताले जुन भाषामा लेखे पनि क्रम बदलिँदैन — last in the prompt: the order never depends on the learner's language
+  const orderReminder =
+    'ORDER RULE (applies even if the learner wrote in Nepali): begin your answer with the heading "English" and a short, simple, basic-English explanation; then the heading "नेपाली" with the same point in short Nepali. Never put Nepali first. Keep both parts short (about 60 words in total).';
   if (req.answerLang !== 'ne') {
     parts.push(
       ENGLISH_LEVELS[level] +
@@ -139,6 +144,8 @@ function buildPrompt(req: AiRequest): string {
           : ''),
     );
   }
+  if (req.answerLang !== 'ne' && req.answerLang !== 'en')
+    parts.push(orderReminder);
   return parts.join('\n\n---\n\n');
 }
 
