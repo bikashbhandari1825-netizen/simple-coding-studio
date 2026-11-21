@@ -1922,7 +1922,7 @@ export default function App() {
         <PromptDialog
           title={tr('नयाँ फाइल · New file')}
           hint={tr(`फोल्डर · Folder: ${baseName(selectedDir)}`)}
-          placeholder="main.dart"
+          placeholder="lib/screens/home_screen.dart"
           confirmLabel={tr('बनाऊ · Create')}
           onClose={() => setDialog(null)}
           onSubmit={async (name) => {

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { FlutterTemplateId } from '../shared/types';
+import { completeFiles } from './flutterTemplateComplete';
 
 // ✨ नयाँ Flutter एपका तयार starter template — ready-made starters applied on top of `flutter create`.
 // "basic" ले `flutter create` को Counter एप जस्ताको तस्तै राख्छ; बाँकीले lib/ बदल्छन् र packages थप्छन्।
@@ -889,15 +890,37 @@ class _DriverPageState extends State<DriverPage> {
 }
 `;
 
+// हरेक starter मा home_screen, models, services, widgets, theme, routes जस्ता फोल्डर/फाइल पनि तयार हुन्छन्
+// Every starter also gets the standard folders and files (home_screen, models, services, widgets, theme, routes).
+const STRUCTURE_PACKAGES = ['shared_preferences', 'intl'];
+function structureFiles(name: string): Record<string, string> {
+  // main.dart हरेक starter को आफ्नै हुन्छ — each starter keeps its own main.dart
+  const { 'lib/main.dart': _main, ...rest } = completeFiles(name);
+  void _main;
+  return rest;
+}
+
 export function templateSpec(
   id: FlutterTemplateId,
   name: string,
 ): TemplateSpec | null {
+  if (id === 'complete')
+    return {
+      packages: ['shared_preferences', 'intl'],
+      remove: ['test/widget_test.dart'],
+      files: completeFiles(name),
+    };
   if (id === 'firebase')
     return {
-      packages: ['firebase_core', 'firebase_auth', 'cloud_firestore'],
+      packages: [
+        'firebase_core',
+        'firebase_auth',
+        'cloud_firestore',
+        ...STRUCTURE_PACKAGES,
+      ],
       remove: ['test/widget_test.dart'],
       files: {
+        ...structureFiles(name),
         'lib/main.dart': firebaseMain,
         'lib/auth_gate.dart': authGate,
         'lib/login_page.dart': loginPage,
@@ -914,9 +937,11 @@ export function templateSpec(
         'cloud_firestore',
         'flutter_map',
         'latlong2',
+        ...STRUCTURE_PACKAGES,
       ],
       remove: ['test/widget_test.dart'],
       files: {
+        ...structureFiles(name),
         'lib/main.dart': mapMain(name),
         'lib/models.dart': mapModels,
         'lib/ride_service.dart': rideService,

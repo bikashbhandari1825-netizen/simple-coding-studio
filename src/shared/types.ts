@@ -46,7 +46,7 @@ export type RunEvent =
     };
 
 /** नयाँ Flutter एपको starter — starter for a new Flutter app */
-export type FlutterTemplateId = 'basic' | 'firebase' | 'map';
+export type FlutterTemplateId = 'basic' | 'complete' | 'firebase' | 'map';
 
 /** Git/backup स्थिति — Git/backup status of the open project */
 export type GitStatusInfo =

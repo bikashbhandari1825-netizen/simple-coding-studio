@@ -214,6 +214,50 @@ function tests(fixture) {
       },
     },
     {
+      name: 'New file with folders: lib/screens/zz_home.dart is created, bad paths refused',
+      run: async (p) => {
+        const root = JSON.stringify(fixture);
+        const r = await p.eval(`(async () => {
+          const out = {};
+          out.made = await window.studio.createFile(${root}, 'lib/zz_screens/zz_home.dart');
+          out.again = await window.studio.createFile(${root}, 'lib/zz_screens/zz_two.dart');
+          out.folder = await window.studio.createFolder(${root}, 'zz_a/zz_b');
+          for (const bad of ['../evil.dart', 'C:/evil.dart', '/evil.dart', 'a/../../evil.dart', 'a/b?.dart']) {
+            try { await window.studio.createFile(${root}, bad); out[bad] = 'CREATED'; } catch { out[bad] = 'refused'; }
+          }
+          return out;
+        })()`);
+        if (
+          !fs.existsSync(
+            path.join(fixture, 'lib', 'zz_screens', 'zz_home.dart'),
+          )
+        )
+          throw new Error('nested file not created: ' + JSON.stringify(r));
+        if (
+          !fs.existsSync(path.join(fixture, 'lib', 'zz_screens', 'zz_two.dart'))
+        )
+          throw new Error('second file in the same new folder failed');
+        if (!fs.statSync(path.join(fixture, 'zz_a', 'zz_b')).isDirectory())
+          throw new Error('nested folder not created');
+        for (const bad of [
+          '../evil.dart',
+          'C:/evil.dart',
+          '/evil.dart',
+          'a/../../evil.dart',
+          'a/b?.dart',
+        ])
+          if (r[bad] !== 'refused')
+            throw new Error('bad path accepted: ' + bad);
+        if (fs.existsSync(path.join(fixture, '..', 'evil.dart')))
+          throw new Error('file escaped the project');
+        fs.rmSync(path.join(fixture, 'lib', 'zz_screens'), {
+          recursive: true,
+          force: true,
+        });
+        fs.rmSync(path.join(fixture, 'zz_a'), { recursive: true, force: true });
+      },
+    },
+    {
       name: 'Save keeps the file encoding (UTF-16 / BOM)',
       run: async (p) => {
         await p.eval(`(async () => {
@@ -533,7 +577,7 @@ function tests(fixture) {
       },
     },
     {
-      name: 'New Flutter app: starter picker (3 templates)',
+      name: 'New Flutter app: starter picker (4 templates)',
       run: async (p) => {
         const r = await p.eval(`(async () => {
           const btn = [...document.querySelectorAll('header button')].find((b) => b.textContent.includes('✨'));
@@ -564,11 +608,11 @@ function tests(fixture) {
           return { ids, before, after, hasName, prefilled, messy, blank, nepali, closed: !document.querySelector('[role=dialog]:not(.find-widget)') };
         })()`);
         if (r.error) throw new Error(r.error);
-        if (r.ids.join() !== 'basic,firebase,map')
+        if (r.ids.join() !== 'basic,complete,firebase,map')
           throw new Error('templates: ' + r.ids);
         if (
-          r.before.join() !== 'true,false,false' ||
-          r.after.join() !== 'false,false,true'
+          r.before.join() !== 'false,true,false,false' ||
+          r.after.join() !== 'false,false,false,true'
         )
           throw new Error('selection: ' + JSON.stringify(r));
         if (!r.hasName || !r.closed) throw new Error(JSON.stringify(r));

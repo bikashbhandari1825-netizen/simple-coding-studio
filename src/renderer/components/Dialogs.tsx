@@ -226,6 +226,13 @@ const TEMPLATES: {
     desc: 'सबैभन्दा सरल सुरुवात — Flutter को आफ्नै Counter एप · The simplest start: the stock Counter app.',
   },
   {
+    id: 'complete',
+    icon: '📦',
+    ne: 'पूरा starter (सबै फोल्डर र फाइल तयार)',
+    en: 'Complete starter (all folders and files ready)',
+    desc: 'home_screen, models, services, widgets, theme र routes सबै आफैं बन्छ; सेभ भएको डाटा फेरि आउँछ · Home screen, models, services, widgets, theme and routes are created for you, and saved data comes back after restart.',
+  },
+  {
     id: 'firebase',
     icon: '🔥',
     ne: 'Firebase Auth + Firestore',
@@ -262,7 +269,7 @@ export function NewFlutterDialog({
   // तयार नाम पहिल्यै भरिएको: Enter थिचे पुग्छ — pre-filled, so Enter alone creates an app
   const [name, setName] = useState(NAME_IDEAS[0]);
   const [idea, setIdea] = useState(0);
-  const [template, setTemplate] = useState<FlutterTemplateId>('basic');
+  const [template, setTemplate] = useState<FlutterTemplateId>('complete');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);

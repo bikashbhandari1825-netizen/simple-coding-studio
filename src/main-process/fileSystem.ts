@@ -221,6 +221,22 @@ function validateName(name: unknown): string {
   return trimmed;
 }
 
+/**
+ * lib/screens/home_screen.dart जस्तो फोल्डर सहितको बाटो पनि मान्ने — accepts a nested path like "lib/screens/home_screen.dart".
+ * हरेक भाग छुट्टै जाँचिन्छ; ".." र पूरा बाटो (C:\ वा /) मान्दैन — every part is checked; ".." and absolute paths are refused.
+ */
+function validateRelPath(name: unknown): string {
+  if (typeof name !== 'string') throw new Error('Invalid name');
+  const raw = name.trim();
+  if (/^([a-zA-Z]:|[\\/])/.test(raw))
+    throw new Error(
+      'पूरा बाटो मिल्दैन — project भित्रको बाटो लेख्नुहोस्, जस्तै lib/screens/home_screen.dart — Use a path inside the project.',
+    );
+  const parts = raw.split(/[\\/]+/).filter((p) => p.length > 0);
+  if (parts.length === 0) throw new Error('Invalid name');
+  return path.join(...parts.map((p) => validateName(p)));
+}
+
 export function registerFileSystemHandlers(): void {
   ipcMain.handle('fs:openFolderDialog', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -435,7 +451,9 @@ export function registerFileSystemHandlers(): void {
     'fs:createFile',
     async (_event, dirPath: string, name: string): Promise<string> => {
       const dir = assertInsideProject(dirPath);
-      const target = assertInsideProject(path.join(dir, validateName(name)));
+      const target = assertInsideProject(path.join(dir, validateRelPath(name)));
+      // फोल्डर नभए आफैं बनाउने — create missing folders on the way
+      await fs.mkdir(path.dirname(target), { recursive: true });
       // 'wx' = पहिल्यै भए नबनाउने — fail instead of overwriting an existing file.
       await fs
         .writeFile(target, '', { flag: 'wx' })
@@ -454,14 +472,25 @@ export function registerFileSystemHandlers(): void {
     'fs:createFolder',
     async (_event, dirPath: string, name: string): Promise<string> => {
       const dir = assertInsideProject(dirPath);
-      const target = assertInsideProject(path.join(dir, validateName(name)));
-      await fs.mkdir(target).catch((err: NodeJS.ErrnoException) => {
-        if (err.code === 'EEXIST')
-          throw new Error(
-            'यो नामको फोल्डर पहिल्यै छ — A folder with this name already exists.',
-          );
-        throw err;
-      });
+      const target = assertInsideProject(path.join(dir, validateRelPath(name)));
+      if (
+        await fs.stat(target).then(
+          () => true,
+          () => false,
+        )
+      )
+        throw new Error(
+          'यो नामको फोल्डर पहिल्यै छ — A folder with this name already exists.',
+        );
+      await fs
+        .mkdir(target, { recursive: true })
+        .catch((err: NodeJS.ErrnoException) => {
+          if (err.code === 'EEXIST')
+            throw new Error(
+              'यो नामको फोल्डर पहिल्यै छ — A folder with this name already exists.',
+            );
+          throw err;
+        });
       return target;
     },
   );

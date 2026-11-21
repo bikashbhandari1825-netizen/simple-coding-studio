@@ -403,7 +403,9 @@ export function registerRunnerHandlers(): void {
         typeof rawName === 'string' ? rawName : '',
       );
       const templateId: FlutterTemplateId =
-        rawTemplate === 'firebase' || rawTemplate === 'map'
+        rawTemplate === 'complete' ||
+        rawTemplate === 'firebase' ||
+        rawTemplate === 'map'
           ? rawTemplate
           : 'basic';
       const win = BrowserWindow.fromWebContents(e.sender);
