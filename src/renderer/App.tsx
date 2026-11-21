@@ -26,6 +26,7 @@ import {
   type SearchMemory,
 } from './components/SearchDialog';
 import { ProblemsPanel, type Problem } from './components/ProblemsPanel';
+import { findWrongFile } from './lib/wrongFile';
 import { GuruCodeBox, type NumberedBlock } from './components/GuruCodeBox';
 import type { CodeBlock } from './lib/splitCode';
 import {
@@ -1051,6 +1052,35 @@ export default function App() {
     }
   }, [tabs, activePath]);
 
+  // 🚫 गलत फाइलमा कोड: अर्को Code को class यो फाइलमा टाइप/पेस्ट गरियो भने रातो — code of another Code step typed into this file is red
+  const wrongHere = useMemo(
+    () =>
+      activeTab
+        ? findWrongFile(activeTab.path, activeTab.content, guruCode)
+        : [],
+    [activeTab, guruCode],
+  );
+  useEffect(() => {
+    for (const tab of tabs) {
+      const model = monaco.editor.getModel(monaco.Uri.parse(tab.path));
+      if (!model) continue;
+      monaco.editor.setModelMarkers(
+        model,
+        'studio-wrongfile',
+        findWrongFile(tab.path, tab.content, guruCode).map((w) => ({
+          severity: monaco.MarkerSeverity.Error,
+          message: `❌ This file is not for "${w.name}". That code belongs to ${w.belongsTo}. · यो फाइल "${w.name}" को होइन। त्यो कोड ${w.belongsTo} को हो।`,
+          startLineNumber: w.line,
+          startColumn: w.startColumn,
+          endLineNumber: w.line,
+          endColumn: w.endColumn,
+          source: 'Wrong file',
+          code: 'studio-wrongfile',
+        })),
+      );
+    }
+  }, [tabs, guruCode]);
+
   // ✅/❌ import लाइनको रङ: ठीक = हरियो, गलत = रातो — import lines: green when fine, red when wrong.
   const importDeco = useRef<Monaco.editor.IEditorDecorationsCollection | null>(
     null,
@@ -1579,6 +1609,19 @@ export default function App() {
               />
             </aside>
             <main className="flex min-w-0 flex-1 flex-col">
+              {wrongHere.length > 0 && (
+                <div
+                  data-testid="wrong-file"
+                  className="border-b-2 border-red-500 bg-red-950 px-3 py-1.5 text-[13px] font-bold text-red-100"
+                >
+                  <div>
+                    {`❌ This file is not for this code. "${wrongHere[0].name}" belongs to ${wrongHere[0].belongsTo}.`}
+                  </div>
+                  <div>
+                    {`❌ यो फाइल यो कोडको होइन। "${wrongHere[0].name}" को कोड ${wrongHere[0].belongsTo} को हो।`}
+                  </div>
+                </div>
+              )}
               <div className="min-h-0 flex-1 bg-slate-800">
                 <EditorArea
                   tabs={tabs}

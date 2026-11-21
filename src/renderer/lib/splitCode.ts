@@ -55,6 +55,20 @@ export function inferTitle(code: string, language: string): string | undefined {
   return undefined;
 }
 
+/** फाइल/फोल्डरको सूची मात्र (कोड होइन)? — only a list of files/folders, not code? */
+export function isFileTree(code: string): boolean {
+  if (/[;{}]/.test(code)) return false;
+  const lines = code.split('\n').filter((l) => l.trim());
+  if (lines.length < 2) return false;
+  // हरेक लाइन फाइल/फोल्डरको बाटोले सुरु हुन्छ — each line starts with a file or folder path
+  const treeish = lines.filter((l) =>
+    /^[\s├└│─|+`*-]*(?:[\w.-]+\/)*[\w.-]*(?:\.(?:dart|ya?ml|json|py|js|ts|tsx|html|css|md|kt|java|xml|gradle|txt)\b|\/)/.test(
+      l,
+    ),
+  );
+  return treeish.length / lines.length >= 0.7;
+}
+
 function makeBlock(lines: string[], title?: string, place?: string): CodeBlock {
   const language = lines[0].trim().slice(3).trim().split(/\s+/)[0] ?? '';
   const closed =
@@ -105,7 +119,10 @@ export function splitCode(markdown: string): SplitAnswer {
     } else {
       current.push(line);
       if (fence) {
-        blocks.push(makeBlock(current, title, place));
+        const made = makeBlock(current, title, place);
+        // फाइलको रूख (योजना) कोड होइन — व्याख्यामै रहन्छ — a file-tree plan is not code; it stays in the explanation
+        if (isFileTree(made.code)) text.push('', ...current, '');
+        else blocks.push(made);
         current = null;
         title = undefined;
         place = undefined;

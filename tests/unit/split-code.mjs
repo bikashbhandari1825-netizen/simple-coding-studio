@@ -114,4 +114,19 @@ eq(
   splitCode('Intro\n\nCode 2: lib/x.dart\n\n```dart\nvoid f(){}\n```').text,
   'Intro',
 );
+const tree = splitCode(
+  'Plan:\n\n```\nlib/\n  main.dart — starts\n  login_page.dart — login\n```\n\nlib/main.dart\n\n```dart\nvoid main() {}\n```',
+);
+eq('file tree is not a code block', tree.blocks.length, 1);
+const arrows = splitCode(
+  '```\npubspec.yaml   -> provider package\nlib/main.dart   -> app start, Provider setup (x)\nlib/screens/a.dart -> form to add hours\n```',
+);
+eq('arrow-style plan is not code', arrows.blocks.length, 0);
+eq(
+  'yaml with keys is still code',
+  splitCode('```yaml\nname: a\ndependencies:\n  flutter:\n```').blocks.length,
+  1,
+);
+eq('file tree stays in the text', tree.text.includes('login_page.dart'), true);
+eq('real block title kept', tree.blocks[0].title, 'lib/main.dart');
 process.exit(bad ? 1 : 0);

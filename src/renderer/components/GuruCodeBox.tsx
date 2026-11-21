@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { tr } from '../i18n';
 import type { CodeBlock } from '../lib/splitCode';
+import { placeholderIn } from '../lib/wrongFile';
 
 /** क्रम नम्बर सहितको कोड (Code 1, Code 2, …) — a code block with its running number */
 export interface NumberedBlock extends CodeBlock {
@@ -211,12 +212,24 @@ export function GuruCodeBox({
           )}
         </div>
       ) : (
-        <pre
-          data-testid="code-text"
-          className="min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[15px] leading-6 font-semibold whitespace-pre text-emerald-50"
-        >
-          {block.code}
-        </pre>
+        <>
+          {placeholderIn(block.code) && (
+            <div
+              data-testid="code-placeholder"
+              className="border-b border-red-500 bg-red-950 px-3 py-1 text-[13px] font-bold text-red-100"
+            >
+              {tr(
+                `❌ Not real code: it has "${placeholderIn(block.code)}". Ask Guru for the full code. · यो असली कोड होइन, "${placeholderIn(block.code)}" छ। Guru लाई पूरा कोड माग्नुहोस्।`,
+              )}
+            </div>
+          )}
+          <pre
+            data-testid="code-text"
+            className="min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[15px] leading-6 font-semibold whitespace-pre text-emerald-50"
+          >
+            {block.code}
+          </pre>
+        </>
       )}
     </div>
   );

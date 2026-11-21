@@ -788,6 +788,46 @@ function tests(fixture) {
           .join(' + ');
       },
     },
+    ...(args['real-app']
+      ? [
+          {
+            name: 'REAL APP: work-hours tracker — every Code has a file name, real code',
+            run: async (p) => {
+              const r = await p.eval(
+                `(async () => {
+                await __t.idleGuru();
+                await __t.open('ok.dart');
+                const ta = [...document.querySelectorAll('aside textarea')].pop();
+                Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(ta, 'मलाई साथीहरूले काम गरेको घण्टा टिप्ने Flutter एप बनाउनु छ: login स्क्रिन, घण्टा थप्ने स्क्रिन, र कुल घण्टाको सूची। पूरा चल्ने कोड सहित।');
+                ta.dispatchEvent(new Event('input', { bubbles: true }));
+                await __t.wait(200);
+                const before = document.querySelectorAll('aside [data-answer]').length;
+                (await __t.until(() => [...document.querySelectorAll('aside button')].find((b) => b.innerText.trim() === '➤' && !b.disabled), 120000, 250)).click();
+                await __t.wait(1500);
+                await __t.until(() => document.querySelectorAll('aside [data-answer]').length > before && (window.studio.stopSpeaking(), true) && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 420000, 500);
+                await window.studio.stopSpeaking();
+                const box = document.querySelector('[data-testid=guru-code-box]');
+                const blocks = [];
+                for (const tab of box ? [...box.querySelectorAll('[data-testid=code-tab]')] : []) {
+                  tab.click(); await __t.wait(150);
+                  box.querySelector('[data-testid=code-unlock]')?.click(); await __t.wait(150);
+                  blocks.push({ tab: tab.innerText, file: box.querySelector('[data-testid=code-file]')?.innerText ?? '', placeholder: Boolean(box.querySelector('[data-testid=code-placeholder]')), code: box.querySelector('[data-testid=code-text]')?.innerText ?? '' });
+                }
+                return blocks;
+              })()`,
+                480000,
+              );
+              fs.writeFileSync(
+                path.join(os.tmpdir(), 'real-app.json'),
+                JSON.stringify(r, null, 1),
+              );
+              return r
+                .map((b) => `${b.tab} [${b.file}] ${b.code.length}c`)
+                .join(' | ');
+            },
+          },
+        ]
+      : []),
     ...(args['with-guru']
       ? [
           {
