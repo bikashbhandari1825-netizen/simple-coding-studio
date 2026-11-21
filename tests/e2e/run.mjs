@@ -980,6 +980,8 @@ function tests(fixture) {
               const r = await p.eval(
                 `(async () => {
                 await __t.idleGuru();
+                const codeTabs = () => [...document.querySelectorAll('[data-testid=code-tab]')].map((t) => t.innerText.split(' ')[0] + ' ' + t.innerText.split(' ')[1]);
+                const tabsBefore = codeTabs();
                 await __t.open('hello.py');
                 await __t.until(() => __t.squiggles() > 0, 20000);
                 await __t.open('app.js');
@@ -992,13 +994,23 @@ function tests(fixture) {
                 const asked = await __t.until(() => /Fix with Guru: hello\\.py:\\d+/.test([...document.querySelectorAll('aside')].pop()?.innerText ?? ''), 90000, 250);
                 await __t.idleGuru();
                 document.querySelector('[data-testid=problems-toggle]').click();
-                return { tab, asked: Boolean(asked) };
+                const tabsAfter = codeTabs();
+                return { tab, asked: Boolean(asked), tabsBefore, tabsAfter };
               })()`,
                 200000,
               );
               if (r.tab !== 'hello.py')
                 throw new Error('did not open the file: ' + r.tab);
               if (!r.asked) throw new Error('Guru was not asked');
+              // पहिलेका Code 1, Code 2 … नमेटिएको — earlier Code tabs must survive the follow-up question
+              if (
+                r.tabsBefore.length > 0 &&
+                r.tabsAfter.slice(0, r.tabsBefore.length).join() !==
+                  r.tabsBefore.join()
+              )
+                throw new Error(
+                  'earlier code tabs were lost: ' + JSON.stringify(r),
+                );
             },
           },
           {

@@ -73,7 +73,7 @@ export function EditorArea({
                   : 'text-slate-400 hover:bg-slate-800/60'
               }`}
             >
-              <span>{tab.name}</span>
+              <span className="font-semibold">{tab.name}</span>
               <button
                 className="w-4 text-center text-slate-500 hover:text-slate-100"
                 title={
@@ -104,7 +104,10 @@ export function EditorArea({
           onChange={(value) => onChange(active.path, value ?? '')}
           onMount={handleMount}
           options={{
-            fontSize: 15,
+            fontSize: 16,
+            // मोटो र ठूलो अक्षर: एकै नजरमा पढ्न सजिलो — thicker, larger text that is easy to read at a glance
+            fontWeight: '600',
+            lineHeight: 26,
             minimap: { enabled: false },
             automaticLayout: true,
             wordWrap: 'on',

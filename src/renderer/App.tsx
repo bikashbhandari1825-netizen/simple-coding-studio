@@ -26,7 +26,7 @@ import {
   type SearchMemory,
 } from './components/SearchDialog';
 import { ProblemsPanel, type Problem } from './components/ProblemsPanel';
-import { GuruCodeBox } from './components/GuruCodeBox';
+import { GuruCodeBox, type NumberedBlock } from './components/GuruCodeBox';
 import type { CodeBlock } from './lib/splitCode';
 import {
   baseName,
@@ -120,7 +120,20 @@ export default function App() {
   const [problems, setProblems] = useState<Problem[]>([]);
   const [problemsOpen, setProblemsOpen] = useState(false);
   // 💻 Guru को कोड बाकस (मुख्य स्क्रिनमा), व्याख्या छेउको Guru बाकसमा — Guru's code box in front; the explanation stays in the side panel
-  const [guruCode, setGuruCode] = useState<CodeBlock[]>([]);
+  // सबै कोड सधैं रहन्छ: Code 1, Code 2, … नयाँ जवाफले अघिल्लो मेट्दैन — all code is kept: Code 1, 2, …; a new answer never wipes the earlier ones
+  const [guruCode, setGuruCode] = useState<NumberedBlock[]>([]);
+  const [codeOpen, setCodeOpen] = useState(true);
+  const [codeFocus, setCodeFocus] = useState(0);
+  const addGuruCode = useCallback((blocks: CodeBlock[]) => {
+    setGuruCode((prev) => {
+      setCodeFocus(prev.length);
+      return [
+        ...prev,
+        ...blocks.map((b, i) => ({ ...b, n: prev.length + i + 1 })),
+      ];
+    });
+    setCodeOpen(true);
+  }, []);
   const applyCodeRef = useRef<((code: string) => void) | null>(null);
   const problemCursor = useRef(-1);
 
@@ -1524,13 +1537,29 @@ export default function App() {
                   }}
                 />
               </div>
-              {guruCode.length > 0 && (
+              {guruCode.length > 0 && codeOpen && (
                 <GuruCodeBox
                   blocks={guruCode}
+                  focusIndex={codeFocus}
+                  onClear={() => {
+                    setGuruCode([]);
+                    setCodeFocus(0);
+                  }}
                   onApply={(code) => applyCodeRef.current?.(code)}
                   onNewFile={(p, c) => void saveCodeAsFile(p, c)}
-                  onClose={() => setGuruCode([])}
+                  onClose={() => setCodeOpen(false)}
                 />
+              )}
+              {guruCode.length > 0 && !codeOpen && (
+                <button
+                  data-testid="show-code-box"
+                  className="border-t border-emerald-700/60 bg-slate-950 px-3 py-1 text-left text-xs font-semibold text-emerald-300 hover:text-emerald-200"
+                  onClick={() => setCodeOpen(true)}
+                >
+                  {tr(
+                    `▴ 💻 Guru को कोड देखाऊ (${guruCode.length}) · Show Guru's code`,
+                  )}
+                </button>
               )}
               {problemsOpen && (
                 <ProblemsPanel
@@ -1620,7 +1649,7 @@ export default function App() {
                 : null
             }
             onVoiceCommand={handleVoiceCommand}
-            onCode={setGuruCode}
+            onCode={addGuruCode}
             applyRef={applyCodeRef}
             onApplyToFile={(content) => {
               if (!activePath) return;

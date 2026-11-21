@@ -769,7 +769,9 @@ input[type='checkbox'] {
 :is(.md-body, .md-code) pre code {
   background: none;
   padding: 0;
-  color: #e2e8f0;
+  color: #f1f5f9;
+  font-weight: 600;
+  font-size: 0.95em;
 }
 :is(.md-body, .md-code) table {
   display: block;
