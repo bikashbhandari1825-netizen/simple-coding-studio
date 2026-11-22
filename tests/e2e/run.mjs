@@ -336,12 +336,51 @@ function tests(fixture) {
             { title: 'lib/zz_saved.dart', language: 'dart', code: 'class ZzSaved {}', markdown: '' },
           ]);
           await __t.wait(600);
-          const keys = Object.keys(localStorage).filter((k) => k.startsWith('scs.code.v1:'));
+          const keys = Object.keys(localStorage).filter((k) => k.startsWith('scs.code.v2:'));
           const hit = keys.map((k) => localStorage.getItem(k) || '').find((v) => v.includes('lib/zz_saved.dart'));
           return { keys: keys.length, saved: Boolean(hit) };
         })()`);
         if (!r.saved)
           throw new Error('Code tab not saved: ' + JSON.stringify(r));
+      },
+    },
+    {
+      name: 'Sessions: every command keeps its own code; switching shows only that session',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          const items = () => [...document.querySelectorAll('[data-testid=session-item]')];
+          const tabs = () => [...document.querySelectorAll('[data-testid=code-tab]')].map((t) => t.innerText);
+          const out = { start: items().length };
+          document.querySelector('[data-testid=session-new]').click();
+          await __t.wait(500);
+          window.__addGuruCode([{ title: 'lib/zz_s1.dart', language: 'dart', code: 'class ZzS1 {}', markdown: '' }]);
+          await __t.wait(500);
+          out.s1 = tabs().join('|');
+          document.querySelector('[data-testid=session-new]').click();
+          await __t.wait(500);
+          out.s2empty = tabs().length;
+          window.__addGuruCode([{ title: 'lib/zz_s2.dart', language: 'dart', code: 'class ZzS2 {}', markdown: '' }]);
+          await __t.wait(500);
+          out.s2 = tabs().join('|');
+          out.count = items().length;
+          items()[1].click();
+          await __t.wait(600);
+          out.back = tabs().join('|');
+          out.activeCount = items().filter((i) => i.dataset.active === 'yes').length;
+          return out;
+        })()`);
+        if (r.count !== r.start + 2)
+          throw new Error('sessions not created: ' + JSON.stringify(r));
+        if (!/zz_s1/.test(r.s1))
+          throw new Error('code 1 missing: ' + JSON.stringify(r));
+        if (r.s2empty !== 0)
+          throw new Error('a new session shows old code: ' + JSON.stringify(r));
+        if (!/zz_s2/.test(r.s2) || /zz_s1/.test(r.s2))
+          throw new Error('session 2 mixed: ' + JSON.stringify(r));
+        if (!/zz_s1/.test(r.back) || /zz_s2/.test(r.back))
+          throw new Error('switching back is wrong: ' + JSON.stringify(r));
+        if (r.activeCount !== 1)
+          throw new Error('active marker: ' + JSON.stringify(r));
       },
     },
     {

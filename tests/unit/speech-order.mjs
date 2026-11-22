@@ -65,7 +65,8 @@ const allSpoken = englishOnly.map((c) => c.text).join(' | ');
 if (/[ऀ-ॿ]/.test(allSpoken) || englishOnly.some((c) => c.lang !== 'en-US')) {
   console.log('FAIL Nepali words in an English answer:', allSpoken);
   bad++;
-} else console.log('ok   English answer is spoken fully in English ->', allSpoken);
+} else
+  console.log('ok   English answer is spoken fully in English ->', allSpoken);
 const cue = englishOnly.find((c) => /code is on the screen/i.test(c.text));
 if (!cue) {
   console.log('FAIL the code cue is not English');

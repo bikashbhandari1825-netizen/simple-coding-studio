@@ -114,6 +114,10 @@ interface Props {
   guideSlot?: ReactNode;
   /** कुराकानी सेभ गर्ने नाम (project अनुसार) — where the chat is saved (per project), so it survives closing the app */
   storageKey?: string;
+  /** पहिलो सन्देश गयो (कुराकानीको नाम राख्न) — a message was sent (to name the session) */
+  onUserMessage?: (text: string) => void;
+  /** "नयाँ" बटन: नयाँ कुराकानी खोल्ने — the New button opens a new session */
+  onNewSession?: () => void;
 }
 
 export interface EditorError {
@@ -137,6 +141,8 @@ export function TutorPanel({
   onApplyToFile,
   guideSlot,
   storageKey,
+  onUserMessage,
+  onNewSession,
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
   // 💾 कुराकानी सेभ: एप बन्द गरेर खोले पनि फर्किन्छ — chat history survives closing and reopening the app
@@ -331,6 +337,7 @@ export function TutorPanel({
         },
       ]);
       setBusyId(requestId);
+      onUserMessage?.(req.label || req.prompt);
       markActive();
       // आफैं लेखेको प्रश्नबाट English लेभल मिलाउने — adapt the English level from what the learner typed.
       let level = eng.level;
@@ -723,7 +730,7 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
         {items.length > 0 && !busyId && (
           <button
             className="chip"
-            onClick={() => setItems([])}
+            onClick={() => (onNewSession ? onNewSession() : setItems([]))}
             title={tr('नयाँ कुराकानी · New conversation')}
           >
             {tr('✨ नयाँ · New')}

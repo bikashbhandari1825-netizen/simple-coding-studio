@@ -28,6 +28,7 @@ import {
 import { ProblemsPanel, type Problem } from './components/ProblemsPanel';
 import { findWrongFile, samePath as pathEndsWith } from './lib/wrongFile';
 import { ErrorGuide } from './components/ErrorGuide';
+import { SessionList, type GuruSession } from './components/SessionList';
 import {
   firstGuide,
   neededFile,
@@ -134,7 +135,117 @@ export default function App() {
   const [codeOpen, setCodeOpen] = useState(true);
   const [codeFocus, setCodeFocus] = useState(0);
   // 💾 Guru को कोड पनि सेभ: एप बन्द गरेर खोले पनि Code 1, 2… फर्किन्छन् — the Code tabs also survive closing the app
-  const codeKey = `scs.code.v1:${(project?.rootPath ?? 'none').toLowerCase()}`;
+  // 🗂️ छुट्टाछुट्टै Guru कुराकानी (Claude को sidebar जस्तै) — separate Guru sessions, each with its own chat and code
+  const projectKey = (project?.rootPath ?? 'none').toLowerCase();
+  const [sessions, setSessions] = useState<GuruSession[]>([]);
+  const [activeSession, setActiveSession] = useState<string | null>(null);
+  const [sessionsOwner, setSessionsOwner] = useState<string | null>(null);
+  const sessionId = () =>
+    's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  useEffect(() => {
+    let list: GuruSession[] = [];
+    let active: string | null = null;
+    try {
+      const raw = localStorage.getItem(`scs.sessions.v1:${projectKey}`);
+      if (raw) {
+        const d = JSON.parse(raw) as {
+          sessions?: GuruSession[];
+          active?: string;
+        };
+        list = Array.isArray(d.sessions) ? d.sessions : [];
+        active = d.active ?? null;
+      }
+      // पुरानो (एउटै) कुराकानी भए "अघिल्लो कुराकानी" बनाउने — move the old single chat into a session
+      if (list.length === 0) {
+        const oldChat = localStorage.getItem(`scs.guru.v1:${projectKey}`);
+        const oldCode = localStorage.getItem(`scs.code.v1:${projectKey}`);
+        const hasOld =
+          (oldChat && oldChat !== '[]') || (oldCode && oldCode !== '[]');
+        const id = sessionId();
+        if (hasOld) {
+          if (oldChat)
+            localStorage.setItem(`scs.guru.v2:${projectKey}:${id}`, oldChat);
+          if (oldCode)
+            localStorage.setItem(`scs.code.v2:${projectKey}:${id}`, oldCode);
+        }
+        list = [
+          {
+            id,
+            title: hasOld ? 'Earlier chat' : 'New chat',
+            updatedAt: Date.now(),
+          },
+        ];
+        active = id;
+      }
+    } catch {
+      list = [{ id: sessionId(), title: 'New chat', updatedAt: Date.now() }];
+    }
+    if (!active || !list.some((s) => s.id === active)) active = list[0].id;
+    setSessions(list);
+    setActiveSession(active);
+    setSessionsOwner(projectKey);
+  }, [projectKey]);
+  useEffect(() => {
+    if (sessionsOwner !== projectKey || !activeSession) return;
+    try {
+      localStorage.setItem(
+        `scs.sessions.v1:${projectKey}`,
+        JSON.stringify({ sessions, active: activeSession }),
+      );
+    } catch {
+      /* सेभ नभए पनि एप चल्छ — the app works without saving */
+    }
+  }, [sessions, activeSession, projectKey, sessionsOwner]);
+  const newSession = () => {
+    const id = sessionId();
+    setSessions((s) => [
+      { id, title: 'New chat', updatedAt: Date.now() },
+      ...s,
+    ]);
+    setActiveSession(id);
+    setUnlockedExtra([]);
+  };
+  const openSession = (id: string) => {
+    setActiveSession(id);
+    setUnlockedExtra([]);
+  };
+  const deleteSession = (id: string) => {
+    if (
+      !window.confirm(
+        tr('यो कुराकानी र यसको कोड मेट्ने? · Delete this session and its code?'),
+      )
+    )
+      return;
+    try {
+      localStorage.removeItem(`scs.guru.v2:${projectKey}:${id}`);
+      localStorage.removeItem(`scs.code.v2:${projectKey}:${id}`);
+    } catch {
+      /* ठीक छ — fine */
+    }
+    const rest = sessions.filter((s) => s.id !== id);
+    if (rest.length === 0) {
+      const fresh = sessionId();
+      setSessions([{ id: fresh, title: 'New chat', updatedAt: Date.now() }]);
+      setActiveSession(fresh);
+    } else {
+      setSessions(rest);
+      if (activeSession === id) setActiveSession(rest[0].id);
+    }
+  };
+  // पहिलो सन्देशबाट कुराकानीको नाम — the session is named after its first message
+  const nameSession = (text: string) =>
+    setSessions((list) =>
+      list.map((s) =>
+        s.id === activeSession && s.title === 'New chat'
+          ? {
+              ...s,
+              title: text.replace(/\s+/g, ' ').trim().slice(0, 40) || s.title,
+              updatedAt: Date.now(),
+            }
+          : s,
+      ),
+    );
+  const codeKey = `scs.code.v2:${projectKey}:${activeSession ?? 'none'}`;
   const [codeOwner, setCodeOwner] = useState<string | null>(null);
   useEffect(() => {
     let loaded: NumberedBlock[] = [];
@@ -1832,18 +1943,27 @@ export default function App() {
       <div className="flex min-h-0 flex-1">
         {project ? (
           <>
-            <aside className="glass-panel w-64 shrink-0 border-r">
-              <FileTree
-                project={project}
-                version={treeVersion}
-                activePath={activePath}
-                selectedDir={selectedDir}
-                onOpenFile={(entry) => void openFile(entry)}
-                onSelectDir={setSelectedDir}
-                onNewFile={() => setDialog('newFile')}
-                onNewFolder={() => setDialog('newFolder')}
-                onTrash={(entry) => void trash(entry)}
-                onError={showError}
+            <aside className="glass-panel flex w-64 shrink-0 flex-col border-r">
+              <div className="min-h-0 flex-1">
+                <FileTree
+                  project={project}
+                  version={treeVersion}
+                  activePath={activePath}
+                  selectedDir={selectedDir}
+                  onOpenFile={(entry) => void openFile(entry)}
+                  onSelectDir={setSelectedDir}
+                  onNewFile={() => setDialog('newFile')}
+                  onNewFolder={() => setDialog('newFolder')}
+                  onTrash={(entry) => void trash(entry)}
+                  onError={showError}
+                />
+              </div>
+              <SessionList
+                sessions={sessions}
+                activeId={activeSession}
+                onOpen={openSession}
+                onNew={newSession}
+                onDelete={deleteSession}
               />
             </aside>
             <main className="flex min-w-0 flex-1 flex-col">
@@ -1993,7 +2113,9 @@ export default function App() {
             onPointerDown={startGuruResize}
           />
           <TutorPanel
-            storageKey={`scs.guru.v1:${(project?.rootPath ?? 'none').toLowerCase()}`}
+            storageKey={`scs.guru.v2:${projectKey}:${activeSession ?? 'none'}`}
+            onUserMessage={nameSession}
+            onNewSession={newSession}
             guideSlot={
               guide && !guideDismissed.includes(guide.key) ? (
                 <ErrorGuide
