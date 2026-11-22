@@ -136,7 +136,7 @@ export function neededFile(
     return undefined;
   }
   if (p.kind === 'import') {
-    if (/^dart:/.test(p.uri)) return undefined;
+    if (p.uri.startsWith('dart:')) return undefined;
     return resolveRelative(dirOf(ctx.filePath), p.uri);
   }
   return undefined;
@@ -227,10 +227,8 @@ export function buildGuide(error: GuideError, ctx: GuideContext): Guide | null {
     for (let d = dirOf(target); d.length > root.length; d = dirOf(d))
       chain.unshift(d);
     const folderSteps: GuideStep[] = [];
-    let known = root;
     for (const d of chain) {
       if (!ctx.exists(d)) break;
-      known = d;
       const label = rel(root, d);
       folderSteps.push({
         id: 'folder:' + label,

@@ -23,7 +23,7 @@ import { Markdown } from './Markdown';
 import { DiffDialog } from './Dialogs';
 import { firstCodeBlock, mergeSnippet } from '../lib/diff';
 import { englishFirst } from '../lib/englishFirst';
-import { splitCode, type CodeBlock } from '../lib/splitCode';
+import { splitCode, splitNepali, type CodeBlock } from '../lib/splitCode';
 import { hintFor } from '../lib/editorErrorHint';
 import { getUiLang, tr, tr2 } from '../i18n';
 import { VoiceWave } from '../voice/VoiceWave';
@@ -135,6 +135,8 @@ export function TutorPanel({
   const [items, setItems] = useState<ChatItem[]>([]);
   // गल्तीको सुझाव सुरुमा English मात्र — error hints start in English only
   const [showNeHints, setShowNeHints] = useState(false);
+  // कुन उत्तरको नेपाली भाग खुलेको छ — which answers have their Nepali part open
+  const [neOpen, setNeOpen] = useState<Record<string, boolean>>({});
   const [input, setInput] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   // 📈 Progressive English लेभल — the learner's English level
@@ -875,14 +877,53 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
                   return (
                     <div data-answer>
                       {/* व्याख्या यहीँ (छेउको बाकस); कोड मुख्य स्क्रिनको "Guru को कोड" बाकसमा — explanation here, code in the Code box in front */}
-                      {parts.text && (
-                        <Markdown
-                          text={parts.text}
-                          showCodeTools={false}
-                          onExplainCode={busyId ? undefined : explainCodeBlock}
-                          onApplyCode={busyId ? undefined : openApply}
-                        />
-                      )}
+                      {(() => {
+                        // सुरुमा English मात्र; बटन थिचेपछि नेपाली — English first; Nepali on demand
+                        const sp = splitNepali(parts.text);
+                        const open = Boolean(neOpen[item.id]);
+                        return (
+                          <>
+                            {sp.english && (
+                              <Markdown
+                                text={sp.english}
+                                showCodeTools={false}
+                                onExplainCode={
+                                  busyId ? undefined : explainCodeBlock
+                                }
+                                onApplyCode={busyId ? undefined : openApply}
+                              />
+                            )}
+                            {sp.nepali && (
+                              <>
+                                <button
+                                  data-testid="explain-ne"
+                                  className="my-1 rounded-lg border border-sky-400 px-3 py-1 text-[12px] font-bold text-sky-200 hover:bg-sky-900/40"
+                                  onClick={() =>
+                                    setNeOpen((m) => ({
+                                      ...m,
+                                      [item.id]: !m[item.id],
+                                    }))
+                                  }
+                                >
+                                  {open
+                                    ? '🇬🇧 English only'
+                                    : '🇳🇵 नेपालीमा एक्सप्लेन गर · Explain in Nepali'}
+                                </button>
+                                {open && (
+                                  <Markdown
+                                    text={sp.nepali}
+                                    showCodeTools={false}
+                                    onExplainCode={
+                                      busyId ? undefined : explainCodeBlock
+                                    }
+                                    onApplyCode={busyId ? undefined : openApply}
+                                  />
+                                )}
+                              </>
+                            )}
+                          </>
+                        );
+                      })()}
                       {boxed && (
                         <div
                           data-testid="code-moved-note"

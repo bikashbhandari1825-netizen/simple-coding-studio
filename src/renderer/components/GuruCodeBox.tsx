@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { tr } from '../i18n';
 import type { CodeBlock } from '../lib/splitCode';
 import { placeholderIn } from '../lib/wrongFile';
+import { matchProgress, pathMatchLength } from '../lib/typeMatch';
 
 /** क्रम नम्बर सहितको कोड (Code 1, Code 2, …) — a code block with its running number */
 export interface NumberedBlock extends CodeBlock {
@@ -27,6 +28,8 @@ export function GuruCodeBox({
   unlocked = [],
   onUnlock,
   onSelectTab,
+  typedFor,
+  typingPath = '',
 }: {
   blocks: NumberedBlock[];
   /** नयाँ जवाफ आउँदा खुल्ने पहिलो नयाँ ट्याब — the first tab of the newest answer, selected when it arrives */
@@ -46,6 +49,10 @@ export function GuruCodeBox({
   onUnlock?: (index: number) => void;
   /** ट्याबमा क्लिक: त्यो फाइल छैन भने बनाउन सुझाउने — a tab was clicked (the app offers to create a missing file) */
   onSelectTab?: (block: NumberedBlock) => void;
+  /** माथिको editor मा त्यो फाइलमा अहिलेसम्म लेखिएको पाठ — the text typed so far in that file's editor above */
+  typedFor?: (block: NumberedBlock) => string | undefined;
+  /** "नयाँ फाइल" बाकसमा लेखिँदै गरेको बाटो — the path being typed in the New file box */
+  typingPath?: string;
 }) {
   const [index, setIndex] = useState(focusIndex);
   const [copied, setCopied] = useState(false);
@@ -54,6 +61,26 @@ export function GuruCodeBox({
   const block = blocks[Math.min(index, blocks.length - 1)];
   if (!block) return null;
   const bi = Math.min(index, blocks.length - 1);
+  const typed = typedFor?.(block);
+  const progress = useMemo(
+    () => matchProgress(block.code, typed),
+    [block.code, typed],
+  );
+  const scroller = useRef<HTMLDivElement>(null);
+  // लेख्दै जाँदा तल देखिने कोड आफैं सर्छ — scroll smoothly so the next line to type stays in view
+  useEffect(() => {
+    const box = scroller.current;
+    if (!box || progress.matched === 0 || progress.nextLine < 0) return;
+    const el = box.querySelector<HTMLElement>(
+      `[data-line="${progress.nextLine}"]`,
+    );
+    if (el) {
+      const top = Math.max(0, el.offsetTop - box.clientHeight / 3);
+      box.dataset.scrollTo = String(Math.round(top));
+      box.scrollTo({ top, behavior: 'smooth' });
+    }
+  }, [progress.nextLine, progress.matched, bi]);
+  const pathTyped = block.title ? pathMatchLength(block.title, typingPath) : 0;
   const isLocked = (i: number) => unlocked[i] === false;
   const locked = isLocked(bi);
   const icon = (i: number) =>
@@ -178,12 +205,31 @@ export function GuruCodeBox({
               className="text-[15px] font-bold text-emerald-300"
               style={{ fontWeight: 700 }}
             >
-              {block.title
-                ? `📄 ${block.title}`
-                : tr('📄 फाइल नाम Guru ले दिएन · file name not given')}
+              {block.title ? (
+                <>
+                  {'📄 '}
+                  <mark
+                    data-testid="code-path-typed"
+                    className="rounded bg-emerald-500/40 px-0 text-emerald-100"
+                  >
+                    {block.title.slice(0, pathTyped)}
+                  </mark>
+                  {block.title.slice(pathTyped)}
+                </>
+              ) : (
+                tr('📄 फाइल नाम Guru ले दिएन · file name not given')
+              )}
             </span>
             {block.place && (
               <span className="text-slate-300">— {block.place}</span>
+            )}
+            {progress.matched > 0 && (
+              <span
+                data-testid="code-progress"
+                className="rounded bg-emerald-900/70 px-1.5 text-[12px] text-emerald-200"
+              >
+                {`✍️ ${progress.matched}/${progress.total}`}
+              </span>
             )}
             <span
               data-testid="code-status"
@@ -242,12 +288,28 @@ export function GuruCodeBox({
                   )}
                 </div>
               )}
-              <pre
+              <div
+                ref={scroller}
                 data-testid="code-text"
-                className="min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[15px] leading-6 font-semibold whitespace-pre text-emerald-50"
+                className="relative min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[15px] leading-6 font-semibold whitespace-pre text-emerald-50"
               >
-                {block.code}
-              </pre>
+                {block.code.split('\n').map((line, i) => (
+                  <div
+                    key={i}
+                    data-line={i}
+                    data-state={progress.states[i]}
+                    className={
+                      progress.states[i] === 'done'
+                        ? 'rounded-sm bg-emerald-500/25'
+                        : progress.states[i] === 'next'
+                          ? 'rounded-sm bg-sky-500/30 ring-1 ring-sky-400'
+                          : ''
+                    }
+                  >
+                    {line === '' ? ' ' : line}
+                  </div>
+                ))}
+              </div>
             </>
           )}
         </div>

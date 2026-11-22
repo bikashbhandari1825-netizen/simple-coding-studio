@@ -53,6 +53,13 @@ function makeFixture() {
     'lib/guide_file.dart',
     "import 'zz_models/zz_item.dart';\n\nvoid main() {}\n",
   );
+  w(
+    'lib/zz_type.dart',
+    Array.from(
+      { length: 40 },
+      (_, i) => 'final int zz' + i + ' = ' + i + ';',
+    ).join(String.fromCharCode(10)) + String.fromCharCode(10),
+  );
   w('lib/format_me.dart', 'void main(){print( "x" );}\n');
   w('app.js', 'const name = "Bikash";\nconsole.log(nme);\n');
   w('hello.py', 'def greet(name)\n    print("Namaste", name)\n');
@@ -102,6 +109,12 @@ window.__t = {
     const t0 = performance.now();
     while (performance.now() - t0 < ms) { try { const v = fn(); if (v) return v; } catch {} await new Promise((r) => setTimeout(r, step)); }
     return null;
+  },
+  // उत्तरको नेपाली भाग खोलेर पूरा उत्तर फर्काउने — open the Nepali part, then return the whole last answer
+  async answerText() {
+    for (const b of document.querySelectorAll('aside [data-testid=explain-ne]')) if (/नेपालीमा/.test(b.innerText)) b.click();
+    await new Promise((r) => setTimeout(r, 250));
+    return [...document.querySelectorAll('aside [data-answer]')].pop()?.innerText ?? '';
   },
   async idleGuru(ms = 120000) {
     const busy = () => [...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹');
@@ -203,9 +216,9 @@ function tests(fixture) {
       name: 'Click-to-open: text, UTF-8 BOM, UTF-16; binary refused politely',
       run: async (p) => {
         const r = await p.eval(`(async () => {
-          await __t.open('utf16.txt'); await __t.wait(2500);
+          await __t.open('utf16.txt'); await __t.until(() => /UTF-16/.test(document.querySelector('.view-line')?.innerText ?? ''), 20000);
           const utf16 = document.querySelector('.view-line')?.innerText.replace(/ /g, ' ');
-          await __t.open('bom.txt'); await __t.wait(2500);
+          await __t.open('bom.txt'); await __t.until(() => /BOM|नमस्ते|bom/i.test(document.querySelector('.view-line')?.innerText ?? ''), 20000);
           const bom = document.querySelector('.view-line')?.innerText.replace(/ /g, ' ');
           __t.toasts.length = 0;
           await __t.open('image.bin'); await __t.wait(2500);
@@ -304,6 +317,46 @@ function tests(fixture) {
         })()`);
         if (r.value !== 'lib/screens/zz_tab_screen.dart')
           throw new Error('box not pre-filled: ' + JSON.stringify(r));
+      },
+    },
+    {
+      name: 'Live typing sync: typed lines are highlighted below and the code scrolls to the next line',
+      run: async (p) => {
+        const lines = Array.from(
+          { length: 60 },
+          (_, i) => 'final int zz' + i + ' = ' + i + ';',
+        );
+        const r = await p.eval(`(async () => {
+          window.__addGuruCode([
+            { title: 'lib/zz_type.dart', language: 'dart', code: ${JSON.stringify(lines.join(String.fromCharCode(10)))}, markdown: '' },
+          ]);
+          await __t.wait(400);
+          await __t.open('zz_type.dart');
+          await __t.wait(500);
+          const tabs = [...document.querySelectorAll('[data-testid=code-tab]')];
+          tabs[tabs.length - 1].click();
+          await __t.wait(4000);
+          const box = document.querySelector('[data-testid=code-text]');
+          return {
+            done: box.querySelectorAll('[data-state=done]').length,
+            next: box.querySelector('[data-state=next]')?.dataset.line ?? null,
+            progress: document.querySelector('[data-testid=code-progress]')?.innerText ?? '',
+            scrolled: Math.max(box.scrollTop, Number(box.dataset.scrollTo || 0)),
+            tabs: __t.tabs(),
+            file: document.querySelector('[data-testid=code-file]')?.innerText,
+            lines: box.querySelectorAll('[data-line]').length,
+          };
+        })()`);
+        if (r.done !== 40)
+          throw new Error('typed lines not highlighted: ' + JSON.stringify(r));
+        if (r.next !== '40')
+          throw new Error('next line wrong: ' + JSON.stringify(r));
+        if (!/40\/60/.test(r.progress))
+          throw new Error('progress: ' + r.progress);
+        if (!(r.scrolled > 100))
+          throw new Error(
+            'did not scroll to the next line: ' + JSON.stringify(r),
+          );
       },
     },
     {
@@ -1027,7 +1080,7 @@ function tests(fixture) {
                 (await __t.until(() => [...document.querySelectorAll('aside button')].find((b) => b.innerText.trim() === '➤' && !b.disabled), 120000, 250)).click();
                 const t0 = performance.now();
                 await __t.until(() => document.querySelectorAll('aside .md-body').length > before && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 120000, 250);
-                const a = [...document.querySelectorAll('aside .md-body')].pop()?.innerText ?? '';
+                const a = await __t.answerText();
                 return { ms: Math.round(performance.now() - t0), a: a.slice(0, 160), fixed: Boolean(document.querySelector('aside [data-order-fixed]')), speaker: [...document.querySelectorAll('aside button[aria-label^="Read aloud"]')].length };
               })()`,
                 150000,
@@ -1047,7 +1100,7 @@ function tests(fixture) {
                 await __t.idleGuru();
                 await window.studio.stopSpeaking();
                 await __t.wait(1200);
-                const answer = [...document.querySelectorAll('aside .md-body')].pop()?.innerText ?? '';
+                const answer = await __t.answerText();
                 const firstLatin = answer.search(/[A-Za-z]{3}/);
                 const firstDev = answer.search(/[ऀ-ॿ]{2}/);
                 const ev = [];
@@ -1096,11 +1149,12 @@ function tests(fixture) {
                 await __t.wait(1500);
                 await __t.until(() => document.querySelectorAll('aside [data-answer]').length > before && (window.studio.stopSpeaking(), true) && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 200000, 500);
                 await window.studio.stopSpeaking();
+                await __t.answerText();
                 const card = [...document.querySelectorAll('aside [data-answer]')].pop();
                 const clone = card.cloneNode(true);
                 clone.querySelectorAll('pre').forEach((x) => x.remove());
                 clone.querySelectorAll('[data-testid=explain-box] > div:first-child').forEach((x) => x.remove());
-                const lines = card.innerText.split('\\n').map((l) => l.trim()).filter((l) => l && !/^(📝|💻)/.test(l));
+                const lines = card.innerText.split('\\n').map((l) => l.trim()).filter((l) => l && !/^(📝|💻)/.test(l) && !/Explain in Nepali|English only/.test(l));
                 const ne = lines.findIndex((l) => /^\\W*नेपाली\\W*$/.test(l));
                 const tail = lines.findIndex((l) => /📚/.test(l));
                 const english = lines.slice(0, ne < 0 ? lines.length : ne).filter((_, k) => tail < 0 || k < tail).join(' ');

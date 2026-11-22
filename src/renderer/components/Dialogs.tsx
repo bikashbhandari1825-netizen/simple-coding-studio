@@ -53,6 +53,7 @@ export function PromptDialog({
   placeholder,
   confirmLabel,
   initialValue = '',
+  onChange,
   onSubmit,
   onClose,
 }: {
@@ -61,6 +62,8 @@ export function PromptDialog({
   placeholder?: string;
   /** आफैं भरिएको नाम (गाइडबाट) — a pre-filled value (from the guide) */
   initialValue?: string;
+  /** लेख्दै गर्दा मान — called as the text changes */
+  onChange?: (value: string) => void;
   confirmLabel: string;
   onSubmit: (value: string) => Promise<void>;
   onClose: () => void;
@@ -95,7 +98,10 @@ export function PromptDialog({
         ref={inputRef}
         value={value}
         placeholder={placeholder}
-        onChange={(e) => setValue(e.target.value)}
+        onChange={(e) => {
+          setValue(e.target.value);
+          onChange?.(e.target.value);
+        }}
         onKeyDown={(e) => e.key === 'Enter' && void submit()}
         className="glass-input w-full rounded-xl px-3 py-2 text-slate-100 outline-none"
       />

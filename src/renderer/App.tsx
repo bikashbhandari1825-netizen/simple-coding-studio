@@ -26,7 +26,7 @@ import {
   type SearchMemory,
 } from './components/SearchDialog';
 import { ProblemsPanel, type Problem } from './components/ProblemsPanel';
-import { findWrongFile } from './lib/wrongFile';
+import { findWrongFile, samePath as pathEndsWith } from './lib/wrongFile';
 import { ErrorGuide } from './components/ErrorGuide';
 import {
   firstGuide,
@@ -151,6 +151,8 @@ export default function App() {
   // 📄 Code ट्याबमा क्लिक गर्दा फाइल छैन भने: सुझाव र ठ्याक्कै बाटो भरिएको "नयाँ फाइल" बाकस
   // Clicking a Code tab whose file is missing: a hint and the New file box pre-filled with the exact path
   const [newFilePrefill, setNewFilePrefill] = useState<string | null>(null);
+  // "नयाँ फाइल" बाकसमा लेखिँदै गरेको बाटो (तलको कोड बाकसमा हाइलाइट हुन) — the path being typed in the New file box
+  const [typingPath, setTypingPath] = useState('');
   const onCodeTab = (b: NumberedBlock) => {
     if (!project || !b.title) return;
     const relPath = b.title
@@ -1864,6 +1866,14 @@ export default function App() {
                   unlocked={unlocked}
                   onUnlock={(i) => setUnlockedExtra((u) => [...u, i])}
                   onSelectTab={onCodeTab}
+                  typingPath={typingPath}
+                  typedFor={(b) =>
+                    b.title
+                      ? tabs.find((t) =>
+                          pathEndsWith(t.path, b.title as string),
+                        )?.content
+                      : undefined
+                  }
                   onClear={() => {
                     setGuruCode([]);
                     setUnlockedExtra([]);
@@ -2192,10 +2202,12 @@ export default function App() {
           hint={tr(`फोल्डर · Folder: ${baseName(selectedDir)}`)}
           placeholder="lib/screens/home_screen.dart"
           initialValue={newFilePrefill ?? guide?.typed ?? ''}
+          onChange={setTypingPath}
           confirmLabel={tr('बनाऊ · Create')}
           onClose={() => {
             setDialog(null);
             setNewFilePrefill(null);
+            setTypingPath('');
           }}
           onSubmit={async (name) => {
             const created = await window.studio.createFile(selectedDir, name);

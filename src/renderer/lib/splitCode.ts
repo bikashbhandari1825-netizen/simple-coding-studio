@@ -139,3 +139,25 @@ export function splitCode(markdown: string): SplitAnswer {
     blocks,
   };
 }
+
+/**
+ * Guru को उत्तरलाई English भाग र नेपाली भागमा छुट्याउने ("नेपाली" शीर्षकबाट)।
+ * Split an answer into the English part and the Nepali part (at the "नेपाली" heading).
+ */
+export function splitNepali(markdown: string): {
+  english: string;
+  nepali: string;
+} {
+  const lines = markdown.split('\n');
+  let inCode = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim().startsWith('```')) inCode = !inCode;
+    if (inCode) continue;
+    if (/^[\s#*_>\-:]*(?:🇳🇵\s*)?(?:नेपाली|Nepali)[\s#*_:]*$/u.test(lines[i]))
+      return {
+        english: lines.slice(0, i).join('\n').trim(),
+        nepali: lines.slice(i).join('\n').trim(),
+      };
+  }
+  return { english: markdown, nepali: '' };
+}
