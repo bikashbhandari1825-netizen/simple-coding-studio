@@ -112,7 +112,11 @@ export function parseError(
     /undefined class '([^']+)'|undefined name '([A-Z]\w*)'|'([A-Z]\w*)' isn't a (?:class|type)|cannot find name '([A-Z]\w*)'/i.exec(
       message,
     );
-  if (c) return { kind: 'class', name: c[1] ?? c[2] ?? c[3] ?? c[4] };
+  if (c) {
+    const name = c[1] ?? c[2] ?? c[3] ?? c[4];
+    // Dart का class ठूलो अक्षरले सुरु हुन्छन्; सानो अक्षरको नाम (जस्तै dart) टाइपिङ गल्ती हो — class names start with a capital; a lowercase word is not a class
+    return /^[A-Z]/.test(name) ? { kind: 'class', name } : null;
+  }
   return null;
 }
 
@@ -238,7 +242,7 @@ export function buildGuide(error: GuideError, ctx: GuideContext): Guide | null {
           norm(ctx.selectedDir).toLowerCase().startsWith(norm(d).toLowerCase()),
       });
     }
-    const typed = norm(target).slice(norm(known).length + 1);
+    const typed = rel(root, target);
     const madeFolders = typed.includes('/')
       ? ' It also makes the missing folders.'
       : '';

@@ -174,11 +174,12 @@ export function ErrorGuide({
         <div className="flex items-start gap-2">
           <span className="text-lg">🧭</span>
           <div className="min-w-0 flex-1">
-            <div data-testid="guide-en" className="font-bold text-slate-50">
-              {guide.en}
-            </div>
-            <div data-testid="guide-ne" className="font-bold text-sky-200">
+            {/* पहिले नेपाली, अनि सरल English — Nepali first, then simple English */}
+            <div data-testid="guide-ne" className="font-bold text-slate-50">
               {guide.ne}
+            </div>
+            <div data-testid="guide-en" className="font-bold text-sky-200">
+              {guide.en}
             </div>
           </div>
           <button
@@ -236,12 +237,12 @@ export function ErrorGuide({
                     <span
                       className={`block font-semibold ${s.done ? 'text-slate-400 line-through' : 'text-slate-100'}`}
                     >
-                      {s.en}
+                      {s.ne}
                     </span>
                     <span
                       className={`block ${s.done ? 'text-slate-500' : 'text-sky-200'}`}
                     >
-                      {s.ne}
+                      {s.en}
                     </span>
                   </span>
                 </button>

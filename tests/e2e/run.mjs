@@ -266,6 +266,47 @@ function tests(fixture) {
       },
     },
     {
+      name: 'No lib/lib duplicates: typing lib/... while inside lib builds from the project root',
+      run: async (p) => {
+        const root = JSON.stringify(fixture);
+        const lib = JSON.stringify(path.join(fixture, 'lib'));
+        const r = await p.eval(`(async () => {
+          const out = {};
+          out.a = await window.studio.createFile(${lib}, 'lib/zz_dup/zz_a.dart');
+          out.b = await window.studio.createFile(${lib}, 'zz_dup/zz_b.dart');
+          out.c = await window.studio.createFile(${root}, 'lib/zz_dup/zz_c.dart');
+          return out;
+        })()`);
+        const d = path.join(fixture, 'lib', 'zz_dup');
+        for (const f of ['zz_a.dart', 'zz_b.dart', 'zz_c.dart'])
+          if (!fs.existsSync(path.join(d, f)))
+            throw new Error('missing ' + f + ': ' + JSON.stringify(r));
+        if (fs.existsSync(path.join(fixture, 'lib', 'lib')))
+          throw new Error('duplicate lib/lib was created');
+        fs.rmSync(d, { recursive: true, force: true });
+      },
+    },
+    {
+      name: 'Code tab click: missing file opens New file box pre-filled with the exact path',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          window.__addGuruCode([
+            { title: 'lib/screens/zz_tab_screen.dart', language: 'dart', code: 'class ZzTab {}', markdown: '' },
+          ]);
+          await __t.wait(500);
+          const tabs = [...document.querySelectorAll('[data-testid=code-tab]')];
+          tabs[tabs.length - 1].click();
+          const input = await __t.until(() => document.querySelector('[role=dialog]:not(.find-widget) input'), 5000, 100);
+          const value = input?.value ?? null;
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+          await __t.wait(300);
+          return { value, closed: !document.querySelector('[role=dialog]:not(.find-widget)') };
+        })()`);
+        if (r.value !== 'lib/screens/zz_tab_screen.dart')
+          throw new Error('box not pre-filled: ' + JSON.stringify(r));
+      },
+    },
+    {
       name: 'Save keeps the file encoding (UTF-16 / BOM)',
       run: async (p) => {
         await p.eval(`(async () => {

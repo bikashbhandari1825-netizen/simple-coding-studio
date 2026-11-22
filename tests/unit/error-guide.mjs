@@ -38,9 +38,9 @@ eq(
   parseError("Target of URI doesn't exist: '../models/work_entry.dart'."),
   { kind: 'import', uri: '../models/work_entry.dart' },
 );
-eq('parse class', parseError("Undefined class 'workentry'."), {
+eq('parse class', parseError("Undefined class 'Workentry'."), {
   kind: 'class',
-  name: 'workentry',
+  name: 'Workentry',
 });
 eq('typo hints are left to the quick fix', parseError('Did you mean x?'), null);
 eq(
@@ -122,7 +122,7 @@ eq('import: folder step points at the tree row', imp3.steps[1].target, {
 });
 eq(
   'import: type only the file name once inside the folder',
-  imp3.steps[3].en.includes('"work_entry.dart"'),
+  imp3.steps[3].en.includes('lib/models/work_entry.dart'),
   true,
 );
 eq(
@@ -172,7 +172,7 @@ eq(
 
 // 🔤 class
 const cls = buildGuide(
-  { message: "Undefined class 'workentry'.", line: 7 },
+  { message: "Undefined class 'Workentry'.", line: 7 },
   base,
 );
 eq(

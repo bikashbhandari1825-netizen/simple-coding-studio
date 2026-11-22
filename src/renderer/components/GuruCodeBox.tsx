@@ -26,6 +26,7 @@ export function GuruCodeBox({
   status = [],
   unlocked = [],
   onUnlock,
+  onSelectTab,
 }: {
   blocks: NumberedBlock[];
   /** नयाँ जवाफ आउँदा खुल्ने पहिलो नयाँ ट्याब — the first tab of the newest answer, selected when it arrives */
@@ -43,6 +44,8 @@ export function GuruCodeBox({
   /** कति Code खुला छन् — how many steps are unlocked */
   unlocked?: boolean[];
   onUnlock?: (index: number) => void;
+  /** ट्याबमा क्लिक: त्यो फाइल छैन भने बनाउन सुझाउने — a tab was clicked (the app offers to create a missing file) */
+  onSelectTab?: (block: NumberedBlock) => void;
 }) {
   const [index, setIndex] = useState(focusIndex);
   const [copied, setCopied] = useState(false);
@@ -77,7 +80,10 @@ export function GuruCodeBox({
               key={b.n}
               data-testid="code-tab"
               title={b.title ?? ''}
-              onClick={() => setIndex(i)}
+              onClick={() => {
+                setIndex(i);
+                onSelectTab?.(b);
+              }}
               className={`shrink-0 rounded px-2 py-0.5 font-mono text-[12px] font-bold ${
                 i === index
                   ? 'bg-emerald-600 text-white'

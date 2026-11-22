@@ -148,6 +148,25 @@ export default function App() {
     setCodeOpen(true);
   }, []);
   const applyCodeRef = useRef<((code: string) => void) | null>(null);
+  // 📄 Code ट्याबमा क्लिक गर्दा फाइल छैन भने: सुझाव र ठ्याक्कै बाटो भरिएको "नयाँ फाइल" बाकस
+  // Clicking a Code tab whose file is missing: a hint and the New file box pre-filled with the exact path
+  const [newFilePrefill, setNewFilePrefill] = useState<string | null>(null);
+  const onCodeTab = (b: NumberedBlock) => {
+    if (!project || !b.title) return;
+    const relPath = b.title
+      .split('\\')
+      .join('/')
+      .replace(/^\.?\//, '');
+    window.studio.readFile(project.rootPath + '/' + relPath).catch(() => {
+      // फाइल छैन: ठ्याक्कै बाटो भरेर बाकस खोल्ने — the file is missing: open the box with the exact path filled in
+      setNewFilePrefill(relPath);
+      setSelectedDir(project.rootPath);
+      setDialog('newFile');
+      showToast(
+        `📄 "${relPath}" फाइल अझै छैन — यहीँ बनाउनुहोस्। · This file is not here yet. Create it now.`,
+      );
+    });
+  };
   // परीक्षणका लागि: कोड ट्याब सिधै थप्ने — a hook so the end-to-end tests can add Code blocks without asking Guru
   useEffect(() => {
     (window as unknown as { __addGuruCode?: unknown }).__addGuruCode =
@@ -1846,6 +1865,7 @@ export default function App() {
                   status={stepStatus}
                   unlocked={unlocked}
                   onUnlock={(i) => setUnlockedExtra((u) => [...u, i])}
+                  onSelectTab={onCodeTab}
                   onClear={() => {
                     setGuruCode([]);
                     setUnlockedExtra([]);
@@ -2173,9 +2193,12 @@ export default function App() {
           title={tr('नयाँ फाइल · New file')}
           hint={tr(`फोल्डर · Folder: ${baseName(selectedDir)}`)}
           placeholder="lib/screens/home_screen.dart"
-          initialValue={guide?.typed ?? ''}
+          initialValue={newFilePrefill ?? guide?.typed ?? ''}
           confirmLabel={tr('बनाऊ · Create')}
-          onClose={() => setDialog(null)}
+          onClose={() => {
+            setDialog(null);
+            setNewFilePrefill(null);
+          }}
           onSubmit={async (name) => {
             const created = await window.studio.createFile(selectedDir, name);
             setTreeVersion((v) => v + 1);

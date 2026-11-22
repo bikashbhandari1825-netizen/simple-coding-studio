@@ -237,6 +237,23 @@ function validateRelPath(name: unknown): string {
   return path.join(...parts.map((p) => validateName(p)));
 }
 
+/**
+ * lib/lib/lib नबनाउन: लेखेको बाटो project को पहिलो फोल्डर (जस्तै lib/) बाट सुरु भए र चुनिएको फोल्डर त्यही भित्र छ भने, project को जरैबाट बनाउने।
+ * Avoid lib/lib/lib: when the typed path starts with the project's top folder (like lib/) and the chosen folder is already inside it, build from the project root.
+ */
+function baseFor(dir: string, relPath: string): string {
+  const parts = relPath.split(path.sep);
+  for (const root of allowedRoots) {
+    const rel = path.relative(root, dir);
+    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) continue;
+    const top = rel.split(path.sep)[0];
+    if (parts.length > 1 && parts[0].toLowerCase() === top.toLowerCase())
+      return root;
+    return dir;
+  }
+  return dir;
+}
+
 export function registerFileSystemHandlers(): void {
   ipcMain.handle('fs:openFolderDialog', async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -451,7 +468,10 @@ export function registerFileSystemHandlers(): void {
     'fs:createFile',
     async (_event, dirPath: string, name: string): Promise<string> => {
       const dir = assertInsideProject(dirPath);
-      const target = assertInsideProject(path.join(dir, validateRelPath(name)));
+      const relPath = validateRelPath(name);
+      const target = assertInsideProject(
+        path.join(baseFor(dir, relPath), relPath),
+      );
       // फोल्डर नभए आफैं बनाउने — create missing folders on the way
       await fs.mkdir(path.dirname(target), { recursive: true });
       // 'wx' = पहिल्यै भए नबनाउने — fail instead of overwriting an existing file.
@@ -472,7 +492,10 @@ export function registerFileSystemHandlers(): void {
     'fs:createFolder',
     async (_event, dirPath: string, name: string): Promise<string> => {
       const dir = assertInsideProject(dirPath);
-      const target = assertInsideProject(path.join(dir, validateRelPath(name)));
+      const relPath = validateRelPath(name);
+      const target = assertInsideProject(
+        path.join(baseFor(dir, relPath), relPath),
+      );
       if (
         await fs.stat(target).then(
           () => true,
