@@ -99,6 +99,9 @@ export function ErrorGuide({
   const auto = currentStepIndex(guide);
   const [picked, setPicked] = useState<number | null>(null);
   const [spot, setSpot] = useState<Spot | null>(null);
+  // सुरुमा English मात्र; बटन थिचेपछि नेपाली देखिन्छ — English only at first; the button reveals Nepali
+  const [showNe, setShowNe] = useState(false);
+  useEffect(() => setShowNe(false), [guide.key]);
   // नयाँ गल्ती आए आफैं पहिलो कदम — a new problem starts at its own current step
   useEffect(() => setPicked(null), [guide.key]);
   const index = picked ?? auto;
@@ -174,13 +177,15 @@ export function ErrorGuide({
         <div className="flex items-start gap-2">
           <span className="text-lg">🧭</span>
           <div className="min-w-0 flex-1">
-            {/* पहिले नेपाली, अनि सरल English — Nepali first, then simple English */}
-            <div data-testid="guide-ne" className="font-bold text-slate-50">
-              {guide.ne}
-            </div>
-            <div data-testid="guide-en" className="font-bold text-sky-200">
+            {/* पहिले English, नेपाली बटन थिचेपछि — English first; Nepali on demand */}
+            <div data-testid="guide-en" className="font-bold text-slate-50">
               {guide.en}
             </div>
+            {showNe && (
+              <div data-testid="guide-ne" className="font-bold text-sky-200">
+                {guide.ne}
+              </div>
+            )}
           </div>
           <button
             className="icon-btn"
@@ -191,6 +196,15 @@ export function ErrorGuide({
             ✕
           </button>
         </div>
+        <button
+          data-testid="guide-explain-ne"
+          className="mt-2 rounded-lg border border-sky-400 px-3 py-1 text-sm font-bold text-sky-200 hover:bg-sky-900/40"
+          onClick={() => setShowNe((v) => !v)}
+        >
+          {showNe
+            ? '🇬🇧 English मात्र · English only'
+            : '🇳🇵 नेपालीमा एक्सप्लेन गर · Explain in Nepali'}
+        </button>
         <div
           data-testid="guide-file"
           className="mt-2 rounded bg-slate-800 px-2 py-1 font-mono text-[13px] font-bold text-emerald-300"
@@ -237,13 +251,15 @@ export function ErrorGuide({
                     <span
                       className={`block font-semibold ${s.done ? 'text-slate-400 line-through' : 'text-slate-100'}`}
                     >
-                      {s.ne}
-                    </span>
-                    <span
-                      className={`block ${s.done ? 'text-slate-500' : 'text-sky-200'}`}
-                    >
                       {s.en}
                     </span>
+                    {showNe && (
+                      <span
+                        className={`block ${s.done ? 'text-slate-500' : 'text-sky-200'}`}
+                      >
+                        {s.ne}
+                      </span>
+                    )}
                   </span>
                 </button>
               </li>

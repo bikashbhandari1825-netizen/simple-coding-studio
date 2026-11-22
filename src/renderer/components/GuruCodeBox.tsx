@@ -74,32 +74,7 @@ export function GuruCodeBox({
         <span className="shrink-0 text-[13px] font-bold text-emerald-300">
           {tr('💻 Guru को कोड · Guru’s code')}
         </span>
-        <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto">
-          {blocks.map((b, i) => (
-            <button
-              key={b.n}
-              data-testid="code-tab"
-              title={b.title ?? ''}
-              onClick={() => {
-                setIndex(i);
-                onSelectTab?.(b);
-              }}
-              className={`shrink-0 rounded px-2 py-0.5 font-mono text-[12px] font-bold ${
-                i === index
-                  ? 'bg-emerald-600 text-white'
-                  : status[i] === 'red'
-                    ? 'bg-red-900 text-red-100 hover:bg-red-800'
-                    : isLocked(i)
-                      ? 'bg-slate-900 text-slate-500 hover:bg-slate-800'
-                      : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-              }`}
-            >
-              {icon(i)}
-              {`Code ${b.n}`}
-              {b.title ? ` · ${b.title}` : ''}
-            </button>
-          ))}
-        </div>
+        <div className="flex-1" />
         <button
           className="chip"
           data-testid="code-copy"
@@ -158,85 +133,125 @@ export function GuruCodeBox({
           ▾
         </button>
       </div>
-      <div
-        data-testid="code-target"
-        className="flex items-center gap-2 border-b border-slate-800 px-3 py-1 font-mono text-[13px] font-bold"
-      >
-        <span
-          data-testid="code-file"
-          className="text-[15px] font-bold text-emerald-300"
-          style={{ fontWeight: 700 }}
+      <div className="flex min-h-0 flex-1">
+        {/* 📁 हरेक फाइल छुट्टै: बाटो, अवस्था र आफ्नै बटन — each file stands apart, like items in a sidebar */}
+        <nav
+          data-testid="code-list"
+          className="w-56 shrink-0 space-y-1 overflow-y-auto border-r border-slate-800 p-1.5"
         >
-          {block.title
-            ? `📄 ${block.title}`
-            : tr('📄 फाइल नाम Guru ले दिएन · file name not given')}
-        </span>
-        {block.place && <span className="text-slate-300">— {block.place}</span>}
-        <span
-          data-testid="code-status"
-          className={
-            status[bi] === 'green'
-              ? 'ml-auto text-emerald-400'
-              : status[bi] === 'red'
-                ? 'ml-auto text-red-400'
-                : 'ml-auto text-slate-400'
-          }
-        >
-          {locked
-            ? tr(
-                '🔒 अघिल्लो Code हरियो भएपछि खुल्छ · Unlocks after the previous Code is green and runs',
-              )
-            : status[bi] === 'green'
-              ? tr('✅ पूरा · Complete')
-              : status[bi] === 'red'
-                ? tr('❌ गल्ती छ · Has errors')
-                : tr(
-                    '✍️ यो फाइलमा टाइप/पेस्ट गर्नुहोस् · Type or paste into this file',
-                  )}
-        </span>
-      </div>
-      {locked ? (
-        <div
-          data-testid="code-locked"
-          className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-sm font-semibold text-slate-300"
-        >
-          <span>
-            {tr(
-              '🔒 Code ' +
-                block.n +
-                ' पर्खाइमा छ · waiting — finish the earlier Code first, then run',
-            )}
-          </span>
-          {onUnlock && (
+          {blocks.map((b, i) => (
             <button
-              className="chip"
-              data-testid="code-unlock"
-              onClick={() => onUnlock(bi)}
+              key={b.n}
+              data-testid="code-tab"
+              title={b.title ?? ''}
+              onClick={() => {
+                setIndex(i);
+                onSelectTab?.(b);
+              }}
+              className={`block w-full rounded-md px-2 py-1 text-left font-mono ${
+                i === index
+                  ? 'bg-emerald-600 text-white'
+                  : status[i] === 'red'
+                    ? 'bg-red-900 text-red-100 hover:bg-red-800'
+                    : isLocked(i)
+                      ? 'bg-slate-900 text-slate-500 hover:bg-slate-800'
+                      : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+              }`}
             >
-              {tr('🔓 अहिले नै खोल · Unlock now')}
+              <span className="block text-[12px] font-bold">
+                {icon(i)}
+                {`Code ${b.n}`}
+              </span>
+              <span className="block truncate text-[11px] font-bold opacity-90">
+                {b.title ?? tr('फाइल नाम छैन · no file name')}
+              </span>
             </button>
-          )}
-        </div>
-      ) : (
-        <>
-          {placeholderIn(block.code) && (
-            <div
-              data-testid="code-placeholder"
-              className="border-b border-red-500 bg-red-950 px-3 py-1 text-[13px] font-bold text-red-100"
+          ))}
+        </nav>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div
+            data-testid="code-target"
+            className="flex items-center gap-2 border-b border-slate-800 px-3 py-1 font-mono text-[13px] font-bold"
+          >
+            <span
+              data-testid="code-file"
+              className="text-[15px] font-bold text-emerald-300"
+              style={{ fontWeight: 700 }}
             >
-              {tr(
-                `❌ Not real code: it has "${placeholderIn(block.code)}". Ask Guru for the full code. · यो असली कोड होइन, "${placeholderIn(block.code)}" छ। Guru लाई पूरा कोड माग्नुहोस्।`,
+              {block.title
+                ? `📄 ${block.title}`
+                : tr('📄 फाइल नाम Guru ले दिएन · file name not given')}
+            </span>
+            {block.place && (
+              <span className="text-slate-300">— {block.place}</span>
+            )}
+            <span
+              data-testid="code-status"
+              className={
+                status[bi] === 'green'
+                  ? 'ml-auto text-emerald-400'
+                  : status[bi] === 'red'
+                    ? 'ml-auto text-red-400'
+                    : 'ml-auto text-slate-400'
+              }
+            >
+              {locked
+                ? tr(
+                    '🔒 अघिल्लो Code हरियो भएपछि खुल्छ · Unlocks after the previous Code is green and runs',
+                  )
+                : status[bi] === 'green'
+                  ? tr('✅ पूरा · Complete')
+                  : status[bi] === 'red'
+                    ? tr('❌ गल्ती छ · Has errors')
+                    : tr(
+                        '✍️ यो फाइलमा टाइप/पेस्ट गर्नुहोस् · Type or paste into this file',
+                      )}
+            </span>
+          </div>
+          {locked ? (
+            <div
+              data-testid="code-locked"
+              className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-sm font-semibold text-slate-300"
+            >
+              <span>
+                {tr(
+                  '🔒 Code ' +
+                    block.n +
+                    ' पर्खाइमा छ · waiting — finish the earlier Code first, then run',
+                )}
+              </span>
+              {onUnlock && (
+                <button
+                  className="chip"
+                  data-testid="code-unlock"
+                  onClick={() => onUnlock(bi)}
+                >
+                  {tr('🔓 अहिले नै खोल · Unlock now')}
+                </button>
               )}
             </div>
+          ) : (
+            <>
+              {placeholderIn(block.code) && (
+                <div
+                  data-testid="code-placeholder"
+                  className="border-b border-red-500 bg-red-950 px-3 py-1 text-[13px] font-bold text-red-100"
+                >
+                  {tr(
+                    `❌ Not real code: it has "${placeholderIn(block.code)}". Ask Guru for the full code. · यो असली कोड होइन, "${placeholderIn(block.code)}" छ। Guru लाई पूरा कोड माग्नुहोस्।`,
+                  )}
+                </div>
+              )}
+              <pre
+                data-testid="code-text"
+                className="min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[15px] leading-6 font-semibold whitespace-pre text-emerald-50"
+              >
+                {block.code}
+              </pre>
+            </>
           )}
-          <pre
-            data-testid="code-text"
-            className="min-h-0 flex-1 overflow-auto px-3 py-2 font-mono text-[15px] leading-6 font-semibold whitespace-pre text-emerald-50"
-          >
-            {block.code}
-          </pre>
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }

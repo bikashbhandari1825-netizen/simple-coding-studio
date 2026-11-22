@@ -162,9 +162,7 @@ export default function App() {
       setNewFilePrefill(relPath);
       setSelectedDir(project.rootPath);
       setDialog('newFile');
-      showToast(
-        `📄 "${relPath}" फाइल अझै छैन — यहीँ बनाउनुहोस्। · This file is not here yet. Create it now.`,
-      );
+      showToast(`📄 This file is not here yet: "${relPath}". Create it now.`);
     });
   };
   // परीक्षणका लागि: कोड ट्याब सिधै थप्ने — a hook so the end-to-end tests can add Code blocks without asking Guru

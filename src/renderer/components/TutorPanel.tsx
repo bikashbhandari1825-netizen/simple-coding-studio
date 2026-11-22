@@ -133,6 +133,8 @@ export function TutorPanel({
   guideSlot,
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
+  // गल्तीको सुझाव सुरुमा English मात्र — error hints start in English only
+  const [showNeHints, setShowNeHints] = useState(false);
   const [input, setInput] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   // 📈 Progressive English लेभल — the learner's English level
@@ -977,6 +979,17 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
               className="mt-1 max-h-32 space-y-1.5 overflow-auto"
               data-testid="error-hints"
             >
+              <li>
+                <button
+                  data-testid="hints-explain-ne"
+                  className="rounded border border-rose-300 px-2 py-0.5 text-[11px] font-bold text-rose-100 hover:bg-rose-900/40"
+                  onClick={() => setShowNeHints((v) => !v)}
+                >
+                  {showNeHints
+                    ? '🇬🇧 English only'
+                    : '🇳🇵 नेपालीमा एक्सप्लेन गर · Explain in Nepali'}
+                </button>
+              </li>
               {editorErrors.slice(0, 4).map((e, i) => {
                 const hint = hintFor(e.message, e.line);
                 return (
@@ -992,9 +1005,11 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
                       <span className="block text-[12px] text-rose-50">
                         {hint.en}
                       </span>
-                      <span className="block text-[12px] text-rose-200/90">
-                        {hint.ne}
-                      </span>
+                      {showNeHints && (
+                        <span className="block text-[12px] text-rose-200/90">
+                          {hint.ne}
+                        </span>
+                      )}
                     </button>
                   </li>
                 );

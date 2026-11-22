@@ -203,12 +203,12 @@ function tests(fixture) {
       name: 'Click-to-open: text, UTF-8 BOM, UTF-16; binary refused politely',
       run: async (p) => {
         const r = await p.eval(`(async () => {
-          await __t.open('utf16.txt'); await __t.wait(800);
+          await __t.open('utf16.txt'); await __t.wait(2500);
           const utf16 = document.querySelector('.view-line')?.innerText.replace(/ /g, ' ');
-          await __t.open('bom.txt'); await __t.wait(800);
+          await __t.open('bom.txt'); await __t.wait(2500);
           const bom = document.querySelector('.view-line')?.innerText.replace(/ /g, ' ');
           __t.toasts.length = 0;
-          await __t.open('image.bin'); await __t.wait(800);
+          await __t.open('image.bin'); await __t.wait(2500);
           return { utf16, bom, tabs: __t.tabs(), toast: __t.toasts.join(' | ') };
         })()`);
         if (!r.utf16?.includes('नमस्ते UTF-16'))
@@ -561,7 +561,10 @@ function tests(fixture) {
           out.pkgGuide = Boolean(await __t.until(() => document.querySelector('[data-testid=error-guide]'), 60000, 300));
           const g = document.querySelector('[data-testid=error-guide]');
           out.en = g?.querySelector('[data-testid=guide-en]')?.innerText ?? '';
-          out.ne = g?.querySelector('[data-testid=guide-ne]')?.innerText ?? '';
+          out.neHidden = !g?.querySelector('[data-testid=guide-ne]');
+          g?.querySelector('[data-testid=guide-explain-ne]')?.click();
+          await __t.wait(250);
+          out.ne = document.querySelector('[data-testid=error-guide] [data-testid=guide-ne]')?.innerText ?? '';
           out.file = g?.querySelector('[data-testid=guide-file]')?.innerText ?? '';
           out.steps = g ? g.querySelectorAll('[data-testid=guide-step]').length : 0;
           out.inGuru = Boolean(g?.closest('aside'));
@@ -589,6 +592,8 @@ function tests(fixture) {
         if (!r.pkgGuide) throw new Error('no guide for the missing package');
         if (!/zz_missing_pkg/.test(r.en) || !/^The package/.test(r.en))
           throw new Error('English reason: ' + r.en);
+        if (!r.neHidden)
+          throw new Error('Nepali is shown before the button is pressed');
         if (!/[ऀ-ॿ]/.test(r.ne)) throw new Error('no Nepali: ' + r.ne);
         if (!/pubspec\.yaml/.test(r.file)) throw new Error('file: ' + r.file);
         if (r.steps !== 3) throw new Error('steps: ' + r.steps);
@@ -865,7 +870,12 @@ function tests(fixture) {
         const r = await p.eval(`(async () => {
           await __t.open('app.js');
           const hints = await __t.until(() => document.querySelector('[data-testid=error-hints]')?.innerText, 15000);
-          const bad = { hints: hints ?? '', allGoodWhileBroken: Boolean(document.querySelector('[data-testid=all-good]')) };
+          const deva = (t) => (t.match(/[ऀ-ॿ]/g) || []).length;
+          const hintsEn = hints ?? '';
+          document.querySelector('[data-testid=hints-explain-ne]')?.click();
+          await __t.wait(300);
+          const hintsBoth = document.querySelector('[data-testid=error-hints]')?.innerText ?? '';
+          const bad = { hints: hintsBoth, grew: deva(hintsBoth) > deva(hintsEn) + 5, allGoodWhileBroken: Boolean(document.querySelector('[data-testid=all-good]')) };
           await __t.open('ok.dart');
           const good = await __t.until(() => document.querySelector('[data-testid=all-good]'), 30000);
           return { bad, good: Boolean(good), goodText: good?.innerText ?? '' };
@@ -882,6 +892,10 @@ function tests(fixture) {
           throw new Error('hint is not bilingual: ' + r.bad.hints);
         if (en > ne)
           throw new Error('Nepali came before English: ' + r.bad.hints);
+        if (!r.bad.grew)
+          throw new Error(
+            'Nepali is not revealed by the button: ' + r.bad.hints,
+          );
         if (r.bad.allGoodWhileBroken)
           throw new Error('green "all good" shown while there is an error');
         if (!r.good)
