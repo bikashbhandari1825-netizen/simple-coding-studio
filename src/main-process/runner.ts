@@ -72,6 +72,13 @@ const NEEDS_PACKAGES: Record<string, 'flutter' | 'dart'> = {
  * 📦 प्याकेज छुटेका वा पुराना छन्? (.dart_tool/package_config.json नभए, वा pubspec त्यसपछि बदलिए)
  * Are the packages missing or out of date? (no package_config.json, or pubspec changed after it)
  */
+async function pathExists(p: string): Promise<boolean> {
+  return fs.stat(p).then(
+    () => true,
+    () => false,
+  );
+}
+
 async function packagesStale(root: string): Promise<boolean> {
   try {
     const cfg = (
@@ -348,8 +355,48 @@ export function registerRunnerHandlers(): void {
       const prep = tool
         ? await prepareRun(root, tool, p.id, await packagesStale(root))
         : { steps: [], notes: [] };
-      const prefix = prep.steps.map((s) => `${s} && `).join('');
-      return startProcess(e.sender, root, p, prefix, prep.notes).runId;
+      // 📦 Run थिच्दा प्याकेज बारम्बार नमाग्न / नअड्कन — never let Run get stuck on "pub get"
+      // Windows मा OneDrive भित्रको project मा path: प्याकेज (third_party/…) भए pub get सधैं असफल हुन्छ (errno 4390)।
+      // In a OneDrive project with path: packages, pub get always fails (errno 4390), so use the packages already fetched.
+      let steps = prep.steps;
+      let runPreset = p;
+      const notes = [...prep.notes];
+      if (tool === 'flutter') {
+        const hasConfig = await pathExists(
+          path.join(root, '.dart_tool', 'package_config.json'),
+        );
+        const spec = await fs
+          .readFile(path.join(root, 'pubspec.yaml'), 'utf8')
+          .catch(() => '');
+        const blocked =
+          /[\\/]OneDrive([\\/]|$)/i.test(root) && /^\s+path\s*:/m.test(spec);
+        if (hasConfig) {
+          if (blocked && steps.some((s) => /\bpub get\b/.test(s))) {
+            steps = steps.filter((s) => !/\bpub get\b/.test(s));
+            notes.push(
+              '⚠️ OneDrive भित्रको project मा pub get चल्दैन, पहिले ल्याइएका प्याकेजले चलाउँदैछु। नयाँ प्याकेज चाहिए project OneDrive बाहिर राख्नुहोस् (जस्तै C:\\dev)। · pub get cannot run inside OneDrive with path: packages, so I use the packages already fetched. Move the project outside OneDrive (for example C:\\dev) to add new packages.',
+            );
+          } else {
+            // pub get असफल भए पनि Run नरोक्ने — a failing pub get must not stop Run
+            steps = steps.map((s) =>
+              /\bpub get\b/.test(s)
+                ? `(${s} || echo [warning] pub get failed - running with the packages already fetched)`
+                : s,
+            );
+          }
+          // flutter ले आफैं फेरि pub get नगरोस् — stop flutter from running pub get again by itself
+          runPreset = {
+            ...p,
+            args: [...p.args, '--no-pub'],
+            commandLine: [
+              p.command,
+              ...[...p.args, '--no-pub'].map(quote),
+            ].join(' '),
+          };
+        }
+      }
+      const prefix = steps.map((s) => `${s} && `).join('');
+      return startProcess(e.sender, root, runPreset, prefix, notes).runId;
     },
   );
 
