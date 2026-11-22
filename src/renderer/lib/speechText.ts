@@ -81,6 +81,31 @@ const SYMBOL_NAMES: Record<string, string> = {
   '|': 'पाइप',
 };
 
+// English जवाफमा चिन्हका नाम पनि English मा — in an English answer the symbol names are English too
+const SYMBOL_NAMES_EN: Record<string, string> = {
+  '{': 'curly brace',
+  '}': 'curly brace',
+  '(': 'bracket',
+  ')': 'bracket',
+  '[': 'square bracket',
+  ']': 'square bracket',
+  ';': 'semicolon',
+  '=': 'equals sign',
+  '=>': 'arrow',
+  '<': 'less than',
+  '>': 'greater than',
+  ':': 'colon',
+  '.': 'dot',
+  ',': 'comma',
+  '+': 'plus',
+  '-': 'minus',
+  '*': 'star',
+  '/': 'slash',
+  '!': 'not sign',
+  '&': 'and sign',
+  '|': 'pipe',
+};
+
 /** English आवाजका लागि: code का चिन्ह नपढ्ने, दोहोरो विराम हटाउने — drop code symbols and double stops. */
 export function polishEnglish(text: string): string {
   return text
@@ -166,6 +191,8 @@ function englishFirst(items: { s: string; sec: Section }[]): string[] {
 
 export function markdownToSpeech(markdown: string): SpeakChunk[] {
   markdown = speakBlocks(markdown);
+  // जवाफ नेपालीमा छ? नत्र हरेक सहायक वाक्य English — is the answer Nepali? Otherwise every helper phrase is English
+  const nepaliAnswer = /[ऀ-ॿ]{3}/.test(markdown.replace(/```[\s\S]*?```/g, ''));
   const sentences: { s: string; sec: Section }[] = [];
   let section: Section = null;
   // हरेक वाक्य आफ्नै विरामसहित; चिन्ह मात्र भए त्यसको नाम भन्ने — every sentence ends with its own stop,
@@ -175,7 +202,7 @@ export function markdownToSpeech(markdown: string): SpeakChunk[] {
     if (!s) return;
     if (!/[\p{L}\p{N}]/u.test(s)) {
       const names = [...new Set(s.match(/=>|[{}()[\];=<>:.,+\-*/!&|]/g) ?? [])]
-        .map((ch) => SYMBOL_NAMES[ch])
+        .map((ch) => (nepaliAnswer ? SYMBOL_NAMES : SYMBOL_NAMES_EN)[ch])
         .filter(Boolean);
       if (!names.length) return;
       s = [...new Set(names)].join(', ');
@@ -190,7 +217,11 @@ export function markdownToSpeech(markdown: string): SpeakChunk[] {
     if (line.startsWith('```')) {
       if (!inCode)
         sentences.push({
-          s: 'यहाँ code छ, त्यो screen मा हेर्नुहोस्।',
+          // जवाफ English मा छ भने यो वाक्य पनि English — नेपाली बीचमा नघुस्न
+          // An English answer gets an English cue, so no Nepali sentence ever pops up in the middle
+          s: nepaliAnswer
+            ? 'यहाँ code छ, त्यो screen मा हेर्नुहोस्।'
+            : 'The code is on the screen. Please look at it.',
           sec: section,
         });
       inCode = !inCode;

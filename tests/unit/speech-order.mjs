@@ -57,4 +57,24 @@ if (/[ऀ-ॿ]/.test(eng.text) || eng.text.startsWith('English')) {
   console.log('FAIL gloss/label not removed from spoken English:', eng.text);
   bad++;
 } else console.log('ok   spoken English has no gloss or label ->', eng.text);
+// ---- English answer: nothing Nepali is ever spoken in the middle
+const englishOnly = markdownToSpeech(
+  'This file is in `lib/main.dart`, for example.\n\n```dart\nvoid main() {}\n```\n\nThe symbols are:\n\n{\n\nRun it, e.g. a = b, then stop.',
+);
+const allSpoken = englishOnly.map((c) => c.text).join(' | ');
+if (/[ऀ-ॿ]/.test(allSpoken) || englishOnly.some((c) => c.lang !== 'en-US')) {
+  console.log('FAIL Nepali words in an English answer:', allSpoken);
+  bad++;
+} else console.log('ok   English answer is spoken fully in English ->', allSpoken);
+const cue = englishOnly.find((c) => /code is on the screen/i.test(c.text));
+if (!cue) {
+  console.log('FAIL the code cue is not English');
+  bad++;
+} else console.log('ok   code cue is English');
+// Nepali answer keeps the Nepali cue
+const nep = markdownToSpeech('यसले पाठ देखाउँछ।\n\n```dart\nvoid main() {}\n```');
+if (!nep.some((c) => /code छ/.test(c.text))) {
+  console.log('FAIL Nepali answer lost its Nepali cue');
+  bad++;
+} else console.log('ok   Nepali answer keeps the Nepali cue');
 process.exit(bad ? 1 : 0);
