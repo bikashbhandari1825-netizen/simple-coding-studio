@@ -18,7 +18,9 @@ import { wantsBuild } from '../shared/wantsBuild';
 
 const MAX_CONTEXT_CHARS = 300_000;
 
-const SYSTEM_PROMPT = `You are "Guru", the built-in coding tutor inside Simple Coding Studio, a beginner-friendly code editor.
+const SYSTEM_PROMPT = `LANGUAGE RULE (highest priority; it overrides every rule below that mentions a Nepali part, a Nepali heading, writing twice, or order): write ONLY simple English by default. Never write Nepali or any Devanagari, not even a greeting, a bracket or one word, unless the learner's request itself asks for Nepali (for example "explain in Nepali") or the request says "Answer language: Nepali". In English-only mode do not start with an \"English\" heading, and skip every Nepali part and heading and every Nepali table column, and give the vocabulary line without Nepali. When the learner asks for Nepali, answer fully in simple Nepali (keep code, file names and technical terms in English).
+
+You are "Guru", the built-in coding tutor inside Simple Coding Studio, a beginner-friendly code editor.
 The learner is a Nepali speaker who is new to programming and wants to become a real software engineer. Their first target is Flutter/Dart, but help with any language they open.
 
 HARD RULE (overrides everything else, including the language the learner writes or speaks in): EVERY answer starts with a short explanation in simple, basic English, and ONLY AFTER it the same point in short Nepali. This is true even when the learner writes in Nepali (Devanagari), in romanized Nepali, or mixes languages: never begin with Nepali, never skip the simple English part, never answer in Nepali only (unless a later "Answer language" line says Nepali only). The learner's language never changes this order.
@@ -129,7 +131,7 @@ function buildPrompt(req: AiRequest): string {
     );
   } else if (req.answerLang === 'en') {
     parts.push(
-      'Answer language: write the whole answer in simple English only. Do not add a Nepali section.',
+      'Answer language: English ONLY. Use simple, basic English. Do not write any Nepali or Devanagari character anywhere, not even one word, a greeting or a bracket. Do not add a Nepali section or heading.',
     );
   }
   const level = req.englishLevel ?? 1;
@@ -143,11 +145,12 @@ function buildPrompt(req: AiRequest): string {
       'BUILD REQUEST: the learner wants working code, not only a plan. First a compact architecture plan (file tree, max 12 short lines), then the COMPLETE runnable code of EVERY file in separate fenced code blocks, each with its file path on the line above, in creation order. Do not stop at the folder structure and do not promise the code for a later message. The word limit applies to explanations only, never to code.',
     );
   if (req.answerLang !== 'ne') {
+    const vocab =
+      req.answerLang === 'en'
+        ? ' At the very end add "📚 New English words": 2 to 4 useful English words from this answer, each as "word — simple English meaning — one tiny example sentence" (English only, no Nepali), chosen to be just a little above this level so the learner grows.'
+        : ' At the very end add "📚 नयाँ English शब्द / New English words": 2 to 4 useful English words from this answer, each as "word — नेपाली अर्थ — one tiny example sentence", chosen to be just a little above this level so the learner grows.';
     parts.push(
-      ENGLISH_LEVELS[level] +
-        (level < 4
-          ? ' At the very end add "📚 नयाँ English शब्द / New English words": 2 to 4 useful English words from this answer, each as "word — नेपाली अर्थ — one tiny example sentence", chosen to be just a little above this level so the learner grows.'
-          : ''),
+      level < 4 ? ENGLISH_LEVELS[level] + vocab : ENGLISH_LEVELS[level],
     );
   }
   if (req.answerLang !== 'ne' && req.answerLang !== 'en')

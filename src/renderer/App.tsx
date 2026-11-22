@@ -133,6 +133,29 @@ export default function App() {
   const [guruCode, setGuruCode] = useState<NumberedBlock[]>([]);
   const [codeOpen, setCodeOpen] = useState(true);
   const [codeFocus, setCodeFocus] = useState(0);
+  // 💾 Guru को कोड पनि सेभ: एप बन्द गरेर खोले पनि Code 1, 2… फर्किन्छन् — the Code tabs also survive closing the app
+  const codeKey = `scs.code.v1:${(project?.rootPath ?? 'none').toLowerCase()}`;
+  const [codeOwner, setCodeOwner] = useState<string | null>(null);
+  useEffect(() => {
+    let loaded: NumberedBlock[] = [];
+    try {
+      const raw = localStorage.getItem(codeKey);
+      if (raw) loaded = JSON.parse(raw) as NumberedBlock[];
+    } catch {
+      loaded = [];
+    }
+    setGuruCode(Array.isArray(loaded) ? loaded : []);
+    setCodeFocus(0);
+    setCodeOwner(codeKey);
+  }, [codeKey]);
+  useEffect(() => {
+    if (codeOwner !== codeKey) return;
+    try {
+      localStorage.setItem(codeKey, JSON.stringify(guruCode));
+    } catch {
+      /* सेभ नभए पनि एप चल्छ — the app works without saving */
+    }
+  }, [guruCode, codeKey, codeOwner]);
   const addGuruCode = useCallback((blocks: CodeBlock[]) => {
     setGuruCode((prev) => {
       setCodeFocus(prev.length);
@@ -1970,6 +1993,7 @@ export default function App() {
             onPointerDown={startGuruResize}
           />
           <TutorPanel
+            storageKey={`scs.guru.v1:${(project?.rootPath ?? 'none').toLowerCase()}`}
             guideSlot={
               guide && !guideDismissed.includes(guide.key) ? (
                 <ErrorGuide

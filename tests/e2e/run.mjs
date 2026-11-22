@@ -116,7 +116,14 @@ window.__t = {
   async answerText() {
     for (const b of document.querySelectorAll('aside [data-testid=explain-ne]')) if (/नेपालीमा/.test(b.innerText)) b.click();
     await new Promise((r) => setTimeout(r, 250));
-    return [...document.querySelectorAll('aside [data-answer]')].pop()?.innerText ?? '';
+    // बटनका लेखाइ बाहेक उत्तरको पाठ — the answer text without the button labels
+    const card = [...document.querySelectorAll('aside [data-answer]')].pop();
+    if (!card) return '';
+    const btns = [...card.querySelectorAll('button')];
+    btns.forEach((b) => (b.style.display = 'none'));
+    const text = card.innerText;
+    btns.forEach((b) => (b.style.display = ''));
+    return text;
   },
   async idleGuru(ms = 120000) {
     const busy = () => [...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹');
@@ -319,6 +326,22 @@ function tests(fixture) {
         })()`);
         if (r.value !== 'lib/screens/zz_tab_screen.dart')
           throw new Error('box not pre-filled: ' + JSON.stringify(r));
+      },
+    },
+    {
+      name: 'Saved on disk: Code tabs are kept in storage so they come back after the app is reopened',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          window.__addGuruCode([
+            { title: 'lib/zz_saved.dart', language: 'dart', code: 'class ZzSaved {}', markdown: '' },
+          ]);
+          await __t.wait(600);
+          const keys = Object.keys(localStorage).filter((k) => k.startsWith('scs.code.v1:'));
+          const hit = keys.map((k) => localStorage.getItem(k) || '').find((v) => v.includes('lib/zz_saved.dart'));
+          return { keys: keys.length, saved: Boolean(hit) };
+        })()`);
+        if (!r.saved)
+          throw new Error('Code tab not saved: ' + JSON.stringify(r));
       },
     },
     {
@@ -1073,7 +1096,7 @@ function tests(fixture) {
     ...(args['with-guru']
       ? [
           {
-            name: 'Guru (Claude Code) answers in Nepali + English',
+            name: 'Guru (Claude Code) answers in English only, even when asked in Nepali',
             run: async (p) => {
               const r = await p.eval(
                 `(async () => {
@@ -1087,19 +1110,19 @@ function tests(fixture) {
                 const t0 = performance.now();
                 await __t.until(() => document.querySelectorAll('aside .md-body').length > before && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 120000, 250);
                 const a = await __t.answerText();
-                return { ms: Math.round(performance.now() - t0), a: a.slice(0, 160), fixed: Boolean(document.querySelector('aside [data-order-fixed]')), speaker: [...document.querySelectorAll('aside button[aria-label^="Read aloud"]')].length };
+                return { ms: Math.round(performance.now() - t0), a: a.slice(0, 160), fixed: Boolean(document.querySelector('aside [data-order-fixed]')), speaker: [...document.querySelectorAll('aside button[aria-label^="Read aloud"], aside button[aria-label="Stop reading"]')].length };
               })()`,
                 150000,
               );
-              if (!/[ऀ-ॿ]/.test(r.a) || !/[A-Za-z]{4}/.test(r.a))
-                throw new Error('answer not bilingual: ' + r.a);
+              if (/[ऀ-ॿ]/.test(r.a) || !/[A-Za-z]{4}/.test(r.a))
+                throw new Error('answer is not English-only: ' + r.a);
               if (r.speaker < 1)
                 throw new Error('no speaker button under the answer');
               return `${r.ms} ms${r.fixed ? ' (model wrote Nepali first; display reordered)' : ' (model followed English-first itself)'}`;
             },
           },
           {
-            name: 'Guru answer and spoken voice: simple English first, then Nepali',
+            name: 'Guru answer and spoken voice: English only; Nepali only after the button',
             run: async (p) => {
               const r = await p.eval(
                 `(async () => {
@@ -1114,7 +1137,8 @@ function tests(fixture) {
                 const btn = [...document.querySelectorAll('aside button[aria-label="Read aloud all"]')].pop();
                 if (!btn) return { error: 'no Listen button', answer: answer.slice(0, 80) };
                 btn.click();
-                await __t.until(() => ev.length >= 2, 60000, 250);
+                await __t.until(() => ev.length >= 1, 60000, 250);
+                await __t.wait(1500);
                 await window.studio.stopSpeaking();
                 off();
                 return { firstLatin, firstDev, voices: ev.slice(0, 3), head: answer.slice(0, 60) };
@@ -1122,26 +1146,41 @@ function tests(fixture) {
                 120000,
               );
               if (r.error) throw new Error(r.error + ' ' + r.answer);
-              if (
-                r.firstLatin < 0 ||
-                r.firstDev < 0 ||
-                r.firstLatin > r.firstDev
-              )
-                throw new Error('text is not English-first: ' + r.head);
+              if (r.firstLatin < 0 || r.firstDev >= 0)
+                throw new Error('text is not English-only: ' + r.head);
               const nep = (v) => /Google नेपाली|हेमकला|Hemkala/.test(v ?? '');
-              if (nep(r.voices[0]))
-                throw new Error('spoken Nepali first: ' + r.voices.join(' | '));
-              if (!r.voices.slice(1).some(nep))
-                throw new Error(
-                  'no Nepali voice after English: ' + r.voices.join(' | '),
-                );
+              if (r.voices.some(nep))
+                throw new Error('spoken Nepali: ' + r.voices.join(' | '));
               return r.voices
                 .map((v) => v.replace(/Microsoft | Online.*$/g, ''))
                 .join(' → ');
             },
           },
           {
-            name: 'Guru explain: English part is pure English, Nepali part comes below',
+            name: 'Guru: Explain in Nepali button answers in Nepali only after it is pressed',
+            run: async (p) => {
+              const r = await p.eval(
+                `(async () => {
+                await __t.idleGuru();
+                const before = document.querySelectorAll('aside [data-answer]').length;
+                const btn = [...document.querySelectorAll('aside [data-testid=explain-ne-ask]')].pop();
+                if (!btn) return { error: 'no Explain in Nepali button on the English answer' };
+                btn.click();
+                await __t.until(() => document.querySelectorAll('aside [data-answer]').length > before && (window.studio.stopSpeaking(), true) && ![...document.querySelectorAll('aside button')].some((b) => b.innerText.trim() === '⏹'), 150000, 500);
+                await window.studio.stopSpeaking();
+                const card = [...document.querySelectorAll('aside [data-answer]')].pop();
+                return { dev: (card.innerText.match(/[ऀ-ॿ]/g) ?? []).length, head: card.innerText.slice(0, 80) };
+              })()`,
+                200000,
+              );
+              if (r.error) throw new Error(r.error);
+              if (r.dev < 10)
+                throw new Error('no Nepali after the button: ' + r.head);
+              return 'Nepali answer: ' + r.head;
+            },
+          },
+          {
+            name: 'Guru explain: pure English, no Nepali section',
             run: async (p) => {
               const r = await p.eval(
                 `(async () => {
@@ -1169,9 +1208,10 @@ function tests(fixture) {
                 260000,
               );
               if (r.error) throw new Error(r.error);
-              if (r.ne < 0)
+              if (r.ne >= 0)
                 throw new Error(
-                  'no separate नेपाली section: ' + JSON.stringify(r),
+                  'a Nepali section appeared without being asked: ' +
+                    JSON.stringify(r),
                 );
               if (r.devInEnglish.length)
                 throw new Error(

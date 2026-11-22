@@ -24,6 +24,7 @@ import { DiffDialog } from './Dialogs';
 import { firstCodeBlock, mergeSnippet } from '../lib/diff';
 import { englishFirst } from '../lib/englishFirst';
 import { splitCode, splitNepali, type CodeBlock } from '../lib/splitCode';
+import { wantsNepali } from '../lib/wantsNepali';
 import { hintFor } from '../lib/editorErrorHint';
 import { getUiLang, tr, tr2 } from '../i18n';
 import { VoiceWave } from '../voice/VoiceWave';
@@ -81,6 +82,8 @@ interface ChatItem {
 }
 
 export interface TutorRequest {
+  /** भाषा: खाली भए English (नेपाली माग्दा मात्र नेपाली) — language: English by default; Nepali only when asked */
+  lang?: 'ne' | 'en';
   mode: AiMode;
   label: string;
   checksChallenge?: boolean;
@@ -109,6 +112,8 @@ interface Props {
   applyRef?: { current: ((code: string) => void) | null };
   /** 🧭 गल्ती मार्गदर्शक कार्ड (Guru बाकस भित्र) — the error-guide card, shown inside the Guru panel */
   guideSlot?: ReactNode;
+  /** कुराकानी सेभ गर्ने नाम (project अनुसार) — where the chat is saved (per project), so it survives closing the app */
+  storageKey?: string;
 }
 
 export interface EditorError {
@@ -131,8 +136,36 @@ export function TutorPanel({
   onVoiceCommand,
   onApplyToFile,
   guideSlot,
+  storageKey,
 }: Props) {
   const [items, setItems] = useState<ChatItem[]>([]);
+  // 💾 कुराकानी सेभ: एप बन्द गरेर खोले पनि फर्किन्छ — chat history survives closing and reopening the app
+  const [chatOwner, setChatOwner] = useState<string | null>(null);
+  useEffect(() => {
+    if (!storageKey) return;
+    let loaded: ChatItem[] = [];
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw)
+        loaded = (JSON.parse(raw) as ChatItem[])
+          .filter((i) => i && typeof i.id === 'string' && !i.streaming)
+          .map((i) => ({ ...i, streaming: false }));
+    } catch {
+      loaded = [];
+    }
+    setItems(loaded);
+    setChatOwner(storageKey);
+  }, [storageKey]);
+  useEffect(() => {
+    // आफ्नै project को कुराकानी मात्र सेभ; लेखिँदै गरेको जवाफ छोड्ने — save only this project's chat, never a half-written answer
+    if (!storageKey || chatOwner !== storageKey) return;
+    if (items.some((i) => i.streaming)) return;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(items.slice(-80)));
+    } catch {
+      /* सेभ नभए पनि एप चल्छ — the app works without saving */
+    }
+  }, [items, storageKey, chatOwner]);
   // गल्तीको सुझाव सुरुमा English मात्र — error hints start in English only
   const [showNeHints, setShowNeHints] = useState(false);
   // कुन उत्तरको नेपाली भाग खुलेको छ — which answers have their Nepali part open
@@ -324,7 +357,8 @@ export function TutorPanel({
       try {
         await window.studio.askAi({
           englishLevel: level,
-          answerLang: getUiLang(),
+          // English मात्र; नेपाली माग्दा मात्र नेपाली — English only; Nepali only when asked
+          answerLang: req.lang ?? (wantsNepali(req.prompt) ? 'ne' : 'en'),
           requestId,
           mode: req.mode,
           messages: [...recent, { role: 'user', content: req.prompt }],
@@ -921,6 +955,30 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
                                 )}
                               </>
                             )}
+                            {/* अंग्रेजी उत्तरमा बटन: थिचेपछि मात्र Guru ले नेपालीमा बुझाउँछ — on an English answer, Guru explains in Nepali only after this button */}
+                            {!sp.nepali &&
+                              !item.streaming &&
+                              !item.error &&
+                              sp.english &&
+                              !/[ऀ-ॿ]{3}/.test(sp.english) && (
+                                <button
+                                  data-testid="explain-ne-ask"
+                                  disabled={Boolean(busyId)}
+                                  className="my-1 rounded-lg border border-sky-400 px-3 py-1 text-[12px] font-bold text-sky-200 hover:bg-sky-900/40 disabled:opacity-50"
+                                  onClick={() =>
+                                    void ask({
+                                      mode: 'chat',
+                                      lang: 'ne',
+                                      label: '🇳🇵 नेपालीमा एक्सप्लेन गर',
+                                      prompt:
+                                        'Explain the following answer in simple, short Nepali (keep code, file names and technical words in English):\n\n' +
+                                        sp.english,
+                                    })
+                                  }
+                                >
+                                  {'🇳🇵 नेपालीमा एक्सप्लेन गर · Explain in Nepali'}
+                                </button>
+                              )}
                           </>
                         );
                       })()}
@@ -931,9 +989,7 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
                         >
                           {item.streaming
                             ? tr('💻 कोड लेख्दैछु… · Writing the code…')
-                            : tr(
-                                `💻 ${parts.blocks.length} कोड बाकस "Guru को कोड" मा छ · ${parts.blocks.length} code block(s) are in the "Guru's code" box`,
-                              )}
+                            : `💻 ${parts.blocks.length} code block(s) are in the "Guru's code" box`}
                         </div>
                       )}
                       {b.quiz && <QuizCard data={b.quiz} />}
