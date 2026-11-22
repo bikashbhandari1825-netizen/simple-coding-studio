@@ -12,6 +12,11 @@ export interface Progress {
   total: number;
   /** अब टाइप गर्नुपर्ने पहिलो लाइन (नभए -1) — the first line still to type, or -1 */
   nextLine: number;
+  /**
+   * लेखिँदै गरेको अधुरो लाइन: हरेक लाइनमा कति अक्षर (सुरुको खाली ठाउँ बाहेक) मिले
+   * The line being typed right now: how many characters (after the indentation) already match, per line
+   */
+  partial: number[];
 }
 
 /**
@@ -48,9 +53,27 @@ export function matchProgress(
   });
   const total = lines.filter((l) => l.trim()).length;
   const matched = done.filter(Boolean).length;
+  // अधुरो लाइन: पछिल्लो लेखिएको लाइन अझै नमिलेका लक्ष्य लाइनको सुरु हो भने अक्षर-अक्षरमा मिलाउने
+  // The half-typed line: if it is the beginning of a target line that is not done yet, match it character by character
+  const partial: number[] = lines.map(() => 0);
+  let tail = '';
+  for (let k = typedLines.length - 1; k >= pointer; k--) {
+    if (typedLines[k]) {
+      tail = typedLines[k];
+      break;
+    }
+  }
+  if (tail) {
+    const j = lines.findIndex(
+      (l, i) =>
+        !done[i] && l.trim().length > tail.length && l.trim().startsWith(tail),
+    );
+    if (j >= 0) partial[j] = tail.length;
+  }
   const nextLine = lines.findIndex((l, i) => l.trim() && !done[i]);
-  if (matched > 0 && nextLine >= 0) states[nextLine] = 'next';
-  return { states, matched, total, nextLine };
+  if ((matched > 0 || tail) && nextLine >= 0 && states[nextLine] !== 'done')
+    states[nextLine] = 'next';
+  return { states, matched, total, nextLine, partial };
 }
 
 /** बाटो टाइप गर्दा अहिलेसम्म मिलेका अक्षर — how many leading characters of the path are typed so far */

@@ -71,4 +71,30 @@ eq(
   splitNepali('```\n## नेपाली\n```\ntext').nepali,
   '',
 );
+const half = matchProgress(
+  "// lib/home_page.dart\nimport 'package:flutter/material.dart';",
+  '// lib/home',
+);
+eq('half-typed first line: 11 characters match', half.partial, [11, 0]);
+eq('half-typed line is the next one', half.states[0], 'next');
+const word = matchProgress(
+  "// a\nimport 'package:flutter/material.dart';",
+  "// a\nimport 'package:fl",
+);
+eq('word by word: package:fl is 18 characters', word.partial, [0, 18]);
+eq(
+  'a typo stops the green',
+  matchProgress('class HomePage {}', 'class Hxm').partial,
+  [0],
+);
+eq(
+  'indented lines count after the indent',
+  matchProgress('a;\n    int x = 1;', 'a;\nint x').partial,
+  [0, 5],
+);
+eq(
+  'a finished line is done, not partial',
+  matchProgress('a;\nb;', 'a;').partial,
+  [0, 0],
+);
 process.exit(bad ? 1 : 0);

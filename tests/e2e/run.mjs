@@ -58,7 +58,9 @@ function makeFixture() {
     Array.from(
       { length: 40 },
       (_, i) => 'final int zz' + i + ' = ' + i + ';',
-    ).join(String.fromCharCode(10)) + String.fromCharCode(10),
+    ).join(String.fromCharCode(10)) +
+      String.fromCharCode(10) +
+      'final int zz40 =',
   );
   w('lib/format_me.dart', 'void main(){print( "x" );}\n');
   w('app.js', 'const name = "Bikash";\nconsole.log(nme);\n');
@@ -340,6 +342,8 @@ function tests(fixture) {
           return {
             done: box.querySelectorAll('[data-state=done]').length,
             next: box.querySelector('[data-state=next]')?.dataset.line ?? null,
+            partial40: box.querySelector('[data-line="40"]')?.dataset.partial ?? null,
+            typedPart: box.querySelector('[data-testid=typed-part]')?.innerText ?? null,
             progress: document.querySelector('[data-testid=code-progress]')?.innerText ?? '',
             scrolled: Math.max(box.scrollTop, Number(box.dataset.scrollTo || 0)),
             tabs: __t.tabs(),
@@ -349,6 +353,8 @@ function tests(fixture) {
         })()`);
         if (r.done !== 40)
           throw new Error('typed lines not highlighted: ' + JSON.stringify(r));
+        if (r.partial40 !== '16' || r.typedPart !== 'final int zz40 =')
+          throw new Error('half-typed line is not green: ' + JSON.stringify(r));
         if (r.next !== '40')
           throw new Error('next line wrong: ' + JSON.stringify(r));
         if (!/40\/60/.test(r.progress))

@@ -70,7 +70,8 @@ export function GuruCodeBox({
   // लेख्दै जाँदा तल देखिने कोड आफैं सर्छ — scroll smoothly so the next line to type stays in view
   useEffect(() => {
     const box = scroller.current;
-    if (!box || progress.matched === 0 || progress.nextLine < 0) return;
+    const typing = progress.matched > 0 || progress.partial.some(Boolean);
+    if (!box || !typing || progress.nextLine < 0) return;
     const el = box.querySelector<HTMLElement>(
       `[data-line="${progress.nextLine}"]`,
     );
@@ -298,15 +299,33 @@ export function GuruCodeBox({
                     key={i}
                     data-line={i}
                     data-state={progress.states[i]}
+                    data-partial={progress.partial[i] || undefined}
                     className={
                       progress.states[i] === 'done'
-                        ? 'rounded-sm bg-emerald-500/25'
+                        ? 'rounded-sm bg-emerald-500/30 text-emerald-100'
                         : progress.states[i] === 'next'
                           ? 'rounded-sm bg-sky-500/30 ring-1 ring-sky-400'
                           : ''
                     }
                   >
-                    {line === '' ? ' ' : line}
+                    {(() => {
+                      if (line === '') return ' ';
+                      const n = progress.partial[i];
+                      if (!n) return line;
+                      // अहिलेसम्म टाइप भएका अक्षर हरिया — the characters typed so far turn green
+                      const lead = line.length - line.trimStart().length;
+                      return (
+                        <>
+                          <span
+                            data-testid="typed-part"
+                            className="rounded-sm bg-emerald-500/45 text-emerald-100"
+                          >
+                            {line.slice(0, lead + n)}
+                          </span>
+                          {line.slice(lead + n)}
+                        </>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
