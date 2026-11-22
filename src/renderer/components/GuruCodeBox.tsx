@@ -224,6 +224,15 @@ export function GuruCodeBox({
             {block.place && (
               <span className="text-slate-300">— {block.place}</span>
             )}
+            {block.addedImports && block.addedImports.length > 0 && (
+              <span
+                data-testid="code-added-imports"
+                title={block.addedImports.join('\n')}
+                className="rounded bg-sky-900/70 px-1.5 text-[12px] text-sky-100"
+              >
+                {tr('➕ import आफैं थपियो · import added automatically')}
+              </span>
+            )}
             {progress.matched > 0 && (
               <span
                 data-testid="code-progress"

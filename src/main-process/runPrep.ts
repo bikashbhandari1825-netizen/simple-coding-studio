@@ -154,6 +154,44 @@ async function addFlutterSdk(root: string, spec: string): Promise<void> {
   await fs.writeFile(path.join(root, 'pubspec.yaml'), next, 'utf8');
 }
 
+/**
+ * 🤖 android/app/build.gradle(.kts) मा resValues चालू गर्ने (पुरानो फाइलको backup सहित)
+ * Turn on resValues in android/app/build.gradle(.kts) (keeps a backup of the old file).
+ */
+export async function enableResValues(
+  root: string,
+): Promise<'patched' | 'already' | 'nofile'> {
+  for (const name of ['build.gradle', 'build.gradle.kts']) {
+    const file = path.join(root, 'android', 'app', name);
+    const text = await fs.readFile(file, 'utf8').catch(() => null);
+    if (text === null) continue;
+    if (/resValues\s*(=|\s)\s*true/.test(text)) return 'already';
+    const kts = name.endsWith('.kts');
+    const flag = kts ? 'resValues = true' : 'resValues true';
+    let next: string;
+    if (/^[ \t]*buildFeatures\s*\{/m.test(text)) {
+      next = text.replace(
+        /^([ \t]*)buildFeatures\s*\{/m,
+        (m, ind: string) => `${m}\n${ind}    ${flag}`,
+      );
+    } else {
+      const m = /^([ \t]*)android\s*\{[^\n]*\n/m.exec(text);
+      if (!m) return 'nofile';
+      const at = (m.index ?? 0) + m[0].length;
+      next =
+        text.slice(0, at) +
+        `${m[1]}    buildFeatures {\n${m[1]}        ${flag}\n${m[1]}    }\n\n` +
+        text.slice(at);
+    }
+    await fs
+      .writeFile(file + '.scs-backup', text, { flag: 'wx' })
+      .catch(() => undefined);
+    await fs.writeFile(file, next, 'utf8');
+    return 'patched';
+  }
+  return 'nofile';
+}
+
 export interface RunPrep {
   /** पहिले चलाउने कमाण्डहरू — commands to run before the real one */
   steps: string[];

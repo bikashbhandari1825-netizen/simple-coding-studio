@@ -162,75 +162,113 @@ async function run(label, root, presetId, file, opts = {}) {
     );
 }
 
+const only = process.argv.find((x) => x.startsWith('--project='));
 try {
-  await run('Python: run this file', py, 'run-file', path.join(py, 'main.py'), {
-    expect: 'PY-OK 5',
-  });
-  await run(
-    'Python: error shows and exits non-zero',
-    py,
-    'run-file',
-    path.join(py, 'bad.py'),
-    {
-      expect: 'ValueError',
-      allowFail: true,
-    },
-  );
-  await run(
-    'JavaScript: run this file (node)',
-    js,
-    'run-file',
-    path.join(js, 'index.js'),
-    { expect: 'JS-OK 42' },
-  );
-  await run('Node project: npm start', js, 'npm-start', null, {
-    expect: 'JS-OK 42',
-  });
-  await run('Dart: run project', dart, 'dart-run', null, {
-    expect: 'DART-OK 2',
-  });
-  await run('Dart: get packages', dart, 'dart-pub-get', null, {
-    expect: 'Got dependencies|Resolving',
-  });
-  if (flutterApp) {
-    await run(
-      'Flutter: Check Flutter setup (doctor)',
-      flutterApp,
-      'flutter-doctor',
-      null,
-      { allowFail: true, expect: 'Doctor summary|Flutter' },
-    );
-    await run('Flutter: Get packages', flutterApp, 'flutter-pub-get', null, {
-      expect: 'Got dependencies|Resolving|Changed',
-    });
-    await run('Flutter: Run in Chrome', flutterApp, 'flutter-web', null, {
-      timeout: 400000,
-      readyWhen:
-        'Flutter run key commands|is being served|Debug service listening|To hot reload',
-    });
-    await run('Flutter: Build for web', flutterApp, 'flutter-build-web', null, {
-      timeout: 400000,
-      expect: 'Built build|Compiling',
-    });
+  if (only) {
+    // एउटा आफ्नै project मा APK/Chrome जाँच्ने — check APK / Chrome on one given project
+    const dir = only.slice('--project='.length);
     if (flags.has('apk'))
       await run(
-        'Flutter: Build APK (Android)',
-        flutterApp,
+        'Project APK: ' + path.basename(dir),
+        dir,
         'flutter-apk',
         null,
         { timeout: 900000, expect: 'Built build|app-release' },
       );
-    if (flags.has('windows'))
+    if (flags.has('chrome'))
       await run(
-        'Flutter: Run as Windows app',
-        flutterApp,
-        'flutter-windows',
+        'Project Chrome: ' + path.basename(dir),
+        dir,
+        'flutter-web',
         null,
         {
           timeout: 600000,
-          readyWhen: 'Flutter run key commands|To hot reload',
+          readyWhen:
+            'Flutter run key commands|is being served|Debug service listening|To hot reload',
         },
       );
+  } else {
+    await run(
+      'Python: run this file',
+      py,
+      'run-file',
+      path.join(py, 'main.py'),
+      {
+        expect: 'PY-OK 5',
+      },
+    );
+    await run(
+      'Python: error shows and exits non-zero',
+      py,
+      'run-file',
+      path.join(py, 'bad.py'),
+      {
+        expect: 'ValueError',
+        allowFail: true,
+      },
+    );
+    await run(
+      'JavaScript: run this file (node)',
+      js,
+      'run-file',
+      path.join(js, 'index.js'),
+      { expect: 'JS-OK 42' },
+    );
+    await run('Node project: npm start', js, 'npm-start', null, {
+      expect: 'JS-OK 42',
+    });
+    await run('Dart: run project', dart, 'dart-run', null, {
+      expect: 'DART-OK 2',
+    });
+    await run('Dart: get packages', dart, 'dart-pub-get', null, {
+      expect: 'Got dependencies|Resolving',
+    });
+    if (flutterApp) {
+      await run(
+        'Flutter: Check Flutter setup (doctor)',
+        flutterApp,
+        'flutter-doctor',
+        null,
+        { allowFail: true, expect: 'Doctor summary|Flutter' },
+      );
+      await run('Flutter: Get packages', flutterApp, 'flutter-pub-get', null, {
+        expect: 'Got dependencies|Resolving|Changed',
+      });
+      await run('Flutter: Run in Chrome', flutterApp, 'flutter-web', null, {
+        timeout: 400000,
+        readyWhen:
+          'Flutter run key commands|is being served|Debug service listening|To hot reload',
+      });
+      await run(
+        'Flutter: Build for web',
+        flutterApp,
+        'flutter-build-web',
+        null,
+        {
+          timeout: 400000,
+          expect: 'Built build|Compiling',
+        },
+      );
+      if (flags.has('apk'))
+        await run(
+          'Flutter: Build APK (Android)',
+          flutterApp,
+          'flutter-apk',
+          null,
+          { timeout: 900000, expect: 'Built build|app-release' },
+        );
+      if (flags.has('windows'))
+        await run(
+          'Flutter: Run as Windows app',
+          flutterApp,
+          'flutter-windows',
+          null,
+          {
+            timeout: 600000,
+            readyWhen: 'Flutter run key commands|To hot reload',
+          },
+        );
+    }
   }
 } finally {
   try {

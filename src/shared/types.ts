@@ -221,7 +221,7 @@ export interface StudioApi {
   /** 🔧 एकै क्लिकको fix (pub get / pub add / pub upgrade) — returns the run id */
   runFix(
     rootPath: string,
-    action: 'pubGet' | 'pubAdd' | 'pubUpgrade',
+    action: 'pubGet' | 'pubAdd' | 'pubUpgrade' | 'androidResValues',
     pkg?: string,
   ): Promise<number>;
   createFlutterProject(

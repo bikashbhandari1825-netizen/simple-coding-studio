@@ -12,6 +12,8 @@ export interface CodeBlock {
   code: string;
   /** ``` सहितको पूरा block — the whole fenced block */
   markdown: string;
+  /** आफैं थपिएका import लाइन — import lines added automatically */
+  addedImports?: string[];
 }
 
 export interface SplitAnswer {

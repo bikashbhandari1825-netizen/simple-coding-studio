@@ -21,7 +21,7 @@ import {
   detectProjectKind,
   registerProject,
 } from './fileSystem';
-import { dartEntry, prepareRun } from './runPrep';
+import { dartEntry, enableResValues, prepareRun } from './runPrep';
 
 // UI ले कमाण्ड पठाउँदैन, preset को id मात्र पठाउँछ। कमाण्ड यहीँ बन्छ, त्यसैले UI बाट जुनसुकै कमाण्ड चलाउन मिल्दैन।
 // The UI sends only a preset id; the command is built here, so the UI can never run arbitrary commands.
@@ -412,6 +412,21 @@ export function registerRunnerHandlers(): void {
         );
       const tool = kind;
       let args: string[];
+      if (action === 'androidResValues') {
+        // resValues चालू गरेर APK फेरि बनाउने — enable resValues, then build the APK again
+        const state = await enableResValues(root);
+        const note =
+          state === 'patched'
+            ? '🔧 android/app/build.gradle मा resValues चालू गरेँ (पुरानो फाइलको backup: build.gradle.scs-backup) · Enabled resValues in android/app/build.gradle (backup: build.gradle.scs-backup)'
+            : state === 'already'
+              ? 'ℹ️ resValues पहिल्यै चालू छ · resValues is already on'
+              : '⚠️ android/app/build.gradle भेटिएन · android/app/build.gradle was not found';
+        const apk = preset('flutter-apk', 'APK बनाऊ', 'Build APK', 'flutter', [
+          'build',
+          'apk',
+        ]);
+        return startProcess(e.sender, root, apk, '', [note]).runId;
+      }
       if (action === 'pubGet') args = ['pub', 'get'];
       else if (action === 'pubUpgrade')
         args = ['pub', 'upgrade', '--major-versions'];

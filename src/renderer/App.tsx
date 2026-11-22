@@ -28,6 +28,7 @@ import {
 import { ProblemsPanel, type Problem } from './components/ProblemsPanel';
 import { findWrongFile, samePath as pathEndsWith } from './lib/wrongFile';
 import { ErrorGuide } from './components/ErrorGuide';
+import { fixMissingImports } from './lib/fixImports';
 import { SessionList, type GuruSession } from './components/SessionList';
 import {
   firstGuide,
@@ -267,7 +268,9 @@ export default function App() {
       /* सेभ नभए पनि एप चल्छ — the app works without saving */
     }
   }, [guruCode, codeKey, codeOwner]);
-  const addGuruCode = useCallback((blocks: CodeBlock[]) => {
+  const addGuruCode = useCallback((rawBlocks: CodeBlock[]) => {
+    // Guru ले import छुटाएको भए थप्ने — add imports Guru forgot
+    const blocks = fixMissingImports(rawBlocks);
     setGuruCode((prev) => {
       setCodeFocus(prev.length);
       return [

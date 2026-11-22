@@ -23,7 +23,7 @@ export interface FixTip {
 
 /** एकै क्लिकको fix (main process ले सुरक्षित कमाण्ड बनाउँछ) — a one-click fix; main builds the safe command. */
 export interface QuickRunFix {
-  action: 'pubGet' | 'pubAdd' | 'pubUpgrade';
+  action: 'pubGet' | 'pubAdd' | 'pubUpgrade' | 'androidResValues';
   pkg?: string;
   label: string;
 }
@@ -229,6 +229,26 @@ export function analyzeOutput(output: string): FixTip[] {
       fix: {
         action: 'pubGet',
         label: '📦 प्याकेजहरू ल्याऊ · Get packages (pub get)',
+      },
+    });
+  }
+  // 🤖 Android build: Gradle (AGP 9) मा resValue बन्द छ — resValue is switched off by default in Android Gradle Plugin 9
+  if (
+    /defaultConfig contains custom resource values, but the feature is disabled/i.test(
+      output,
+    )
+  ) {
+    out.unshift({
+      id: 'android-resvalues',
+      kind: 'android build',
+      message:
+        'defaultConfig contains custom resource values, but the feature is disabled',
+      tip: 'APK बन्न सकेन: तपाईंको android/app/build.gradle मा resValue प्रयोग भएको छ, तर नयाँ Android Gradle Plugin मा त्यो सुविधा बन्द हुन्छ। तलको बटनले "buildFeatures { resValues true }" थपेर APK फेरि बनाउँछ। — The APK could not be built: android/app/build.gradle uses resValue, but the new Android Gradle Plugin turns that feature off. The button below adds "buildFeatures { resValues true }" and builds the APK again.',
+      file: 'android/app/build.gradle',
+      fix: {
+        action: 'androidResValues',
+        label:
+          '🔧 resValues चालू गरेर APK बनाऊ · Enable resValues and build the APK',
       },
     });
   }
