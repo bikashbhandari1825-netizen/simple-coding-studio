@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, session, shell } from 'electron';
+import os from 'node:os';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { registerAiHandlers } from './main-process/ai';
@@ -20,11 +21,35 @@ import {
 } from './main-process/diagnostics';
 import { registerGitStatusHandlers } from './main-process/gitStatus';
 import { registerSpeakerHandlers, stopSpeaker } from './main-process/speaker';
+import {
+  fixedUserDataDir,
+  hasUserDataArg,
+  migrateOldData,
+} from './main-process/profilePath';
 
 // Windows installer ले shortcut बनाउँदा/हटाउँदा एप तुरुन्तै बन्द गर्ने।
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
+}
+
+// 💾 डेटा (Guru च्याट, कोड, सेटिङ) सधैं एउटै फोल्डरमा: Claude जस्ता sandbox एपले चलाउँदा %APPDATA% अर्कै हुन्थ्यो र डेटा दुई ठाउँमा बाँडिन्थ्यो।
+// Keep the data in one folder: when a sandboxed app started this app, %APPDATA% was a different place and the data got split in two.
+// परीक्षणमा --user-data-dir दिइन्छ, त्यसलाई छुँदैनौँ। — Tests pass --user-data-dir; that is left alone.
+if (
+  !started &&
+  !hasUserDataArg(process.argv) &&
+  (app.isPackaged || process.env.SCS_DATA_DIR)
+) {
+  const dataDir = fixedUserDataDir(os.homedir(), process.env);
+  try {
+    // पहिलो पटक: पुरानो ठाउँको डेटा सार्ने — first time: bring the data over from the old place
+    migrateOldData(app.getPath('userData'), dataDir);
+  } catch (err) {
+    console.error('[data] could not copy the old data', err);
+  }
+  app.setPath('userData', dataDir);
+  app.setPath('sessionData', dataDir);
 }
 
 // एउटै समयमा एउटा मात्र Studio: दोस्रो पटक खोल्दा पहिलेकै window अगाडि ल्याउने।
