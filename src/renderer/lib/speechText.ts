@@ -212,18 +212,20 @@ export function markdownToSpeech(markdown: string): SpeakChunk[] {
   };
   const lines = markdown.replace(/\r/g, '').split('\n');
   let inCode = false;
+  // "कोड छ" भन्ने वाक्य एकपटक मात्र — the "code is on the screen" sentence is said only once per answer
+  let codeAnnounced = false;
   for (const raw of lines) {
     const line = raw.trim();
     if (line.startsWith('```')) {
-      if (!inCode)
+      if (!inCode && !codeAnnounced) {
+        codeAnnounced = true;
         sentences.push({
           // जवाफ English मा छ भने यो वाक्य पनि English — नेपाली बीचमा नघुस्न
           // An English answer gets an English cue, so no Nepali sentence ever pops up in the middle
-          s: nepaliAnswer
-            ? 'यहाँ code छ, त्यो screen मा हेर्नुहोस्।'
-            : 'The code is on the screen. Please look at it.',
+          s: codeNote(nepaliAnswer),
           sec: section,
         });
+      }
       inCode = !inCode;
       continue;
     }
@@ -245,6 +247,14 @@ export function markdownToSpeech(markdown: string): SpeakChunk[] {
     }
     let text = cleanInline(line.replace(/^[-*+]\s+|^\d+[.)]\s+/, ''));
     if (!text) continue;
+    // फाइलको बाटो अक्षर-अक्षर नपढ्ने, "File: home screen" भन्ने — a bare file path is spoken as a short file name
+    const fileName = spokenFileName(
+      line.replace(/^[-*+]\s+|^\d+[.)]\s+/, '').replace(/[`*]/g, ''),
+    );
+    if (fileName) {
+      add(nepaliAnswer ? `फाइल: ${fileName}` : `File: ${fileName}`);
+      continue;
+    }
     // "English: …" / "नेपाली: …" लेबल: खण्ड चिनो राखेर लेबल हटाउने — keep the section, drop the spoken label
     const labelled = /^(English|नेपाली)\s*[:：]\s*(.+)$/i.exec(text);
     if (labelled) {
@@ -289,4 +299,52 @@ export function markdownToSpeech(markdown: string): SpeakChunk[] {
         ? polishNepali(c.text)
         : polishEnglish(c.text.replace(NEPALI_GLOSS, ' '));
   return chunks.filter((c) => c.text.replace(/[।.,\s]/g, ''));
+}
+
+/** "कोड छ" भन्ने एउटा वाक्य — the one sentence that says the code is on the screen */
+export function codeNote(nepali: boolean): string {
+  return nepali
+    ? 'कोड Guru को कोड बाकसमा छ, स्क्रिनमा हेर्नुहोस्।'
+    : 'The code is in the Guru code box on the screen.';
+}
+
+const FILE_EXT =
+  /^[\w./\\-]+\.(dart|py|js|ts|tsx|jsx|json|yaml|yml|md|html|css|kt|java|xml|gradle|txt)$/i;
+
+/** फाइलको बाटोबाट छोटो नाम (बोल्न मिल्ने) — a short speakable name from a file path, or null when the line is not a path */
+export function spokenFileName(line: string): string | null {
+  const t = line.trim();
+  if (!FILE_EXT.test(t)) return null;
+  const base = t.split(/[\\/]/).pop() ?? t;
+  const name = base
+    .replace(/\.[^.]+$/, '')
+    .replace(/[_-]+/g, ' ')
+    .trim();
+  return name || null;
+}
+
+/**
+ * 🎵 लाइन-लाइनको पढाइ (Spotify जस्तै): देखिएका हरेक लाइन (unit) को आवाज, र कुन आवाज कुन लाइनको हो।
+ * Line-by-line speech: the chunks for each displayed line (unit) from `from` on, plus which unit each chunk belongs to
+ * (so the screen can highlight the line being read). `note` is spoken once at the end and belongs to no line (-1).
+ */
+export function unitsToSpeech(
+  units: string[],
+  from = 0,
+  only?: SpeakChunk['lang'],
+  note?: string,
+): { chunks: SpeakChunk[]; unitOf: number[] } {
+  const chunks: SpeakChunk[] = [];
+  const unitOf: number[] = [];
+  const push = (list: SpeakChunk[], u: number) => {
+    for (const c of list) {
+      if (only && c.lang !== only) continue;
+      chunks.push(c);
+      unitOf.push(u);
+    }
+  };
+  for (let u = Math.max(0, from); u < units.length; u++)
+    push(markdownToSpeech(units[u]), u);
+  if (note) push(markdownToSpeech(note), -1);
+  return { chunks, unitOf };
 }

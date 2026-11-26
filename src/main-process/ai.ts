@@ -145,12 +145,17 @@ function buildPrompt(req: AiRequest): string {
       'BUILD REQUEST: the learner wants working code, not only a plan. First a compact architecture plan (file tree, max 12 short lines), then the COMPLETE runnable code of EVERY file in separate fenced code blocks, each with its file path on the line above, in creation order. Do not stop at the folder structure and do not promise the code for a later message. The word limit applies to explanations only, never to code.',
     );
   if (req.answerLang !== 'ne') {
+    // व्याकरण कोच — the learner (Nepali first, Hindi second, English third) wants basic grammar to improve
+    const coach =
+      level < 4
+        ? ' GRAMMAR COACH: the learner speaks Nepali first, Hindi second and basic English third, and wants to improve English grammar so they can explain their own apps one day. Write every sentence with correct, simple grammar, one idea per sentence, subject + verb + object, mostly present simple ("The button opens a page."). Use the same sentence pattern again and again so the learner can copy it. After "📚 New English words" add one line "✏️ Grammar tip": name ONE basic grammar point that you used in this answer (for example: "is / are", "a / an / the", present simple with -s, "can + verb", "to + verb", "-ing", plural -s, "this / these"), explain it in one short, simple English sentence, and show 2 short example sentences about the learner\'s code or app. Then add one line "🗣️ Say it yourself": one correct sentence, built from this answer, that the learner can say when they explain their app to another person. While you explain, keep grammar visible: for the most important sentence of the answer, add one line "🔍 Sentence parts" that splits it as Subject (who or what) | Verb (the action) | Object (what receives the action), for example "The button (subject) | opens (verb) | a new page (object)". Rotate the grammar point; do not repeat the same one in the next answers. Never correct or mention the learner\'s mistakes unless they ask; if the learner wrote English, you may silently reuse their idea in a correct sentence.'
+        : '';
     const vocab =
       req.answerLang === 'en'
         ? ' At the very end add "📚 New English words": 2 to 4 useful English words from this answer, each as "word — simple English meaning — one tiny example sentence" (English only, no Nepali), chosen to be just a little above this level so the learner grows.'
         : ' At the very end add "📚 नयाँ English शब्द / New English words": 2 to 4 useful English words from this answer, each as "word — नेपाली अर्थ — one tiny example sentence", chosen to be just a little above this level so the learner grows.';
     parts.push(
-      level < 4 ? ENGLISH_LEVELS[level] + vocab : ENGLISH_LEVELS[level],
+      level < 4 ? ENGLISH_LEVELS[level] + vocab + coach : ENGLISH_LEVELS[level],
     );
   }
   if (req.answerLang !== 'ne' && req.answerLang !== 'en')

@@ -449,3 +449,141 @@ export function SettingsDialog({
     </Modal>
   );
 }
+
+/**
+ * 🗑️ project मेटाउन ३ पटक सोध्ने dialog — a delete dialog that asks three times (by accident one click can never delete).
+ * १) हो/होइन, २) फेरि पक्का?, ३) फोल्डरको नाम लेख्नुहोस्। हरेक "हो" बटन केही सेकेन्ड पछि मात्र खुल्छ।
+ * 1) yes/no, 2) really sure?, 3) type the folder name. Every "yes" button unlocks only after a short wait.
+ */
+export function DeleteProjectDialog({
+  folderName,
+  folderPath,
+  onSubmit,
+  onClose,
+}: {
+  folderName: string;
+  folderPath: string;
+  onSubmit: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [typed, setTyped] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState(false);
+  // हरेक चरणमा "हो" बटन १.५ सेकेन्ड लक — each step locks its "yes" button for 1.5 s
+  useEffect(() => {
+    setReady(false);
+    const t = setTimeout(() => setReady(true), 1500);
+    return () => clearTimeout(t);
+  }, [step]);
+
+  const finish = async () => {
+    if (busy) return;
+    if (typed.trim() !== folderName) {
+      setError(
+        'नाम मिलेन — लेखेको नाम फोल्डरको नामसँग ठ्याक्कै मिल्नुपर्छ · The name does not match the folder name.',
+      );
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await onSubmit();
+      onClose();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={tr(`🗑️ Project मेटाऊ · Delete project (${step}/3)`)}
+      onClose={onClose}
+    >
+      <p
+        className="mb-1 text-sm font-semibold text-slate-100"
+        data-testid="delete-step"
+      >
+        {folderName}
+      </p>
+      <p className="mb-3 text-xs break-all text-slate-400">{folderPath}</p>
+      {step === 1 && (
+        <p className="mb-4 text-sm text-slate-300">
+          {tr(
+            'यो project फोल्डर मेटाउन खोज्दै हुनुहुन्छ? यो Recycle Bin मा जान्छ। · Do you want to delete this project folder? It goes to the Recycle Bin.',
+          )}
+        </p>
+      )}
+      {step === 2 && (
+        <p className="mb-4 text-sm text-amber-200">
+          {tr(
+            'यसमा तपाईंको महत्त्वपूर्ण काम हुन सक्छ। फेरि सोध्छु: साँच्चै मेटाउने? · This project may hold important work. Asking again: really delete it?',
+          )}
+        </p>
+      )}
+      {step === 3 && (
+        <>
+          <p className="mb-2 text-sm text-slate-300">
+            {tr(
+              `अन्तिम चरण: पक्का भए फोल्डरको नाम "${folderName}" लेख्नुहोस्। · Last step: type the folder name "${folderName}" to confirm.`,
+            )}
+          </p>
+          <input
+            autoFocus
+            value={typed}
+            placeholder={folderName}
+            onChange={(e) => setTyped(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void finish()}
+            className="glass-input w-full rounded-xl px-3 py-2 text-slate-100 outline-none"
+          />
+        </>
+      )}
+      {error && <p className="mt-2 text-sm text-rose-400">{tr(error)}</p>}
+      <div className="mt-4 flex justify-end gap-2">
+        <button
+          className="btn-primary"
+          data-testid="delete-cancel"
+          autoFocus={step !== 3}
+          onClick={onClose}
+        >
+          {step === 2 ? tr('होइन, राख्छु · No, keep it') : tr('रद्द · Cancel')}
+        </button>
+        {step === 1 && (
+          <button
+            className="btn-ghost"
+            data-testid="delete-continue"
+            disabled={!ready}
+            onClick={() => setStep(2)}
+          >
+            {tr('हो, अगाडि · Yes, continue')}
+          </button>
+        )}
+        {step === 2 && (
+          <button
+            className="btn-ghost"
+            data-testid="delete-continue"
+            disabled={!ready}
+            onClick={() => setStep(3)}
+          >
+            {tr('हो, पक्का · Yes, I am sure')}
+          </button>
+        )}
+        {step === 3 && (
+          <button
+            className="btn-ghost"
+            data-testid="delete-final"
+            disabled={busy || !ready || !typed.trim()}
+            onClick={() => void finish()}
+          >
+            {busy
+              ? tr('पर्खनुहोस्… · Working…')
+              : tr('🗑️ Recycle Bin मा पठाऊ · Move to Recycle Bin')}
+          </button>
+        )}
+      </div>
+    </Modal>
+  );
+}

@@ -30,6 +30,8 @@ import { getUiLang, tr, tr2 } from '../i18n';
 import { VoiceWave } from '../voice/VoiceWave';
 import { SpeakWave } from '../voice/SpeakWave';
 import { useSpeaker } from '../voice/useSpeaker';
+import { answerRoot, answerUnits, chatIdOf } from '../lib/answerUnits';
+import { codeNote } from '../lib/speechText';
 import {
   adaptLevel,
   LEVEL_NAMES,
@@ -226,6 +228,53 @@ export function TutorPanel({
   const commandRef = useRef<(cmd: VoiceCommand) => void>(() => undefined);
   // 🔊 Guru को जवाफ पढ्ने — read Guru's answers aloud
   const speaker = useSpeaker();
+  /** 🎵 देखिएका लाइन र कोडको एउटा वाक्य — the displayed lines of an answer, and the one sentence about the code */
+  const unitsFor = (itemId: string, content: string) => {
+    const { texts } = answerUnits(answerRoot(itemId));
+    const nepali = /[ऀ-ॿ]{3}/.test(texts.join(' '));
+    return {
+      texts,
+      note: /```/.test(content) ? codeNote(nepali) : undefined,
+    };
+  };
+  /** 🎵 कुनै लाइन थिच्दा त्यहींबाट बोल्ने (Spotify को गीतको लाइन जस्तै) — tap a line and Guru speaks from that line */
+  const speakFromLine = (
+    e: React.MouseEvent<HTMLElement>,
+    itemId: string,
+    content: string,
+  ) => {
+    const target = e.target as HTMLElement;
+    // बटन, लिङ्क, कोड थिचेको हो भने केही नगर्ने; पाठ छान्दै छ भने पनि — ignore buttons, links, code, and text selection
+    if (
+      target.closest(
+        'button, a, pre, input, select, textarea, [data-testid="code-moved-note"]',
+      )
+    )
+      return;
+    if ((window.getSelection()?.toString() ?? '').length > 0) return;
+    const line = target.closest('p, li, h1, h2, h3, h4, h5, h6, tr');
+    if (!line) return;
+    const { els } = answerUnits(e.currentTarget);
+    const from = els.indexOf(line as HTMLElement);
+    if (from < 0) return;
+    const u = unitsFor(itemId, content);
+    void speaker.playUnits(`${itemId}:all`, u.texts, {
+      from,
+      note: u.note,
+      restart: true,
+    });
+  };
+  // 🎵 बोलिँदै गरेको लाइन उज्यालो पार्ने — highlight the line being read
+  useEffect(() => {
+    for (const n of document.querySelectorAll('.speaking-line'))
+      n.classList.remove('speaking-line');
+    const sid = speaker.speakingId;
+    if (!sid || speaker.activeUnit === null) return;
+    const el = answerUnits(answerRoot(chatIdOf(sid))).els[speaker.activeUnit];
+    if (!el) return;
+    el.classList.add('speaking-line');
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [speaker.speakingId, speaker.activeUnit]);
   // 🔊 जवाफ सकिनेबित्तिकै आफैं सुनाउने (Gemini जस्तै) — read each finished answer aloud by itself.
   const [autoSpeak, setAutoSpeak] = useState(() => {
     try {
@@ -267,8 +316,12 @@ export function TutorPanel({
       const item = items.find((i) => i.id === id);
       if (!item || item.streaming) continue;
       toSpeak.current.delete(id);
-      if (item.content && !item.error)
-        void speaker.toggle(`${id}:all`, item.content);
+      if (item.content && !item.error) {
+        const u = unitsFor(id, item.content);
+        if (u.texts.length)
+          void speaker.playUnits(`${id}:all`, u.texts, { note: u.note });
+        else void speaker.toggle(`${id}:all`, item.content);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- speaker.toggle is stable enough here
   }, [items]);
@@ -916,7 +969,11 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
                   const parts = splitCode(b.markdown);
                   const boxed = parts.blocks.length > 0;
                   return (
-                    <div data-answer>
+                    <div
+                      data-answer
+                      data-answer-id={item.id}
+                      onClick={(e) => speakFromLine(e, item.id, item.content)}
+                    >
                       {/* व्याख्या यहीँ (छेउको बाकस); कोड मुख्य स्क्रिनको "Guru को कोड" बाकसमा — explanation here, code in the Code box in front */}
                       {(() => {
                         // सुरुमा English मात्र; बटन थिचेपछि नेपाली — English first; Nepali on demand
@@ -1034,6 +1091,7 @@ Give: 1) the file path to create (for Flutter under lib/), 2) ONE complete, real
                   id={item.id}
                   content={item.content}
                   speaker={speaker}
+                  getUnits={() => unitsFor(item.id, item.content)}
                   hasNepali={/[ऀ-ॿ]{2}/.test(item.content)}
                   hasEnglish={/[A-Za-z]{3}/.test(
                     item.content.replace(/```[\s\S]*?```/g, ''),
@@ -1316,6 +1374,7 @@ function SpeakerBar({
   id,
   content,
   speaker,
+  getUnits,
   hasNepali,
   hasEnglish,
 }: {
@@ -1323,6 +1382,8 @@ function SpeakerBar({
   id: string;
   content: string;
   speaker: ReturnType<typeof useSpeaker>;
+  /** देखिएका लाइनहरू (पाठ) र कोडको एउटा वाक्य — the displayed lines and the one code sentence */
+  getUnits: () => { texts: string[]; note?: string };
   hasNepali: boolean;
   hasEnglish: boolean;
 }) {
@@ -1378,8 +1439,8 @@ function SpeakerBar({
         .filter((o) => o.show)
         .map((o) => {
           const bid = `${id}:${o.key}`;
-          const playing = speaker.speakingId === bid;
-          const loading = speaker.loadingId === bid;
+          const playing = Boolean(speaker.speakingId?.startsWith(bid));
+          const loading = Boolean(speaker.loadingId?.startsWith(bid));
           return (
             <span key={o.key} className="flex items-center gap-1.5">
               {playing && (
@@ -1398,7 +1459,20 @@ function SpeakerBar({
                     ? tr('रोक्न फेरि थिच्नुहोस् · Press again to stop')
                     : tr('ठूलो स्वरमा सुन्नुहोस् · Listen')
                 }
-                onClick={() => void speaker.toggle(bid, content, o.only)}
+                onClick={() => {
+                  const u = getUnits();
+                  if (!u.texts.length) {
+                    void speaker.toggle(bid, content, o.only);
+                    return;
+                  }
+                  void speaker
+                    .playUnits(bid, u.texts, { only: o.only, note: u.note })
+                    .then((r) => {
+                      // देखिएको भागमा त्यो भाषा छैन भने पुरानै तरिका — if the shown part has none of that language, use the old way
+                      if (r === 'empty')
+                        void speaker.toggle(bid, content, o.only);
+                    });
+                }}
               >
                 {loading
                   ? tr('⏳ तयार हुँदै · Starting')

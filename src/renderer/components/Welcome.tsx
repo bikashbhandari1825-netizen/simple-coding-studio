@@ -6,6 +6,11 @@ interface Props {
   onOpenFolder: () => void;
   onNewFlutter: () => void;
   onOpenRecent: (path: string) => void;
+  /** 🗑️ project फोल्डर मेटाउन माग्ने — ask to delete a project folder */
+  onDeleteProject?: (path: string) => void;
+  /** अहिले खुलेको project — the project that is still open */
+  currentProject?: string;
+  onBack?: () => void;
 }
 
 // फोल्डरको नामबाट सधैँ उही रङ — a stable accent colour per project name.
@@ -21,7 +26,14 @@ const accentFor = (name: string) =>
   ACCENTS[[...name].reduce((a, c) => a + c.charCodeAt(0), 0) % ACCENTS.length];
 
 /** 🌌 स्वागत पृष्ठ: drag & drop क्षेत्र र हालै खोलेका project — the welcome dashboard. */
-export function Welcome({ onOpenFolder, onNewFlutter, onOpenRecent }: Props) {
+export function Welcome({
+  onOpenFolder,
+  onNewFlutter,
+  onOpenRecent,
+  onDeleteProject,
+  currentProject,
+  onBack,
+}: Props) {
   const [recent, setRecent] = useState(loadRecent);
   const [over, setOver] = useState(false);
   return (
@@ -56,6 +68,16 @@ export function Welcome({ onOpenFolder, onNewFlutter, onOpenRecent }: Props) {
             ))}
           </div>
         </div>
+
+        {currentProject && onBack && (
+          <button
+            data-testid="welcome-back"
+            className="btn-primary mt-6 w-full px-5 py-3 text-base"
+            onClick={onBack}
+          >
+            {tr('↩ फर्क · Back to')} {baseName(currentProject)}
+          </button>
+        )}
 
         {/* Drop zone */}
         <div
@@ -132,6 +154,19 @@ export function Welcome({ onOpenFolder, onNewFlutter, onOpenRecent }: Props) {
                         ›
                       </span>
                     </button>
+                    {onDeleteProject && (
+                      <button
+                        data-testid="recent-delete"
+                        className="absolute -right-1.5 -bottom-1.5 hidden h-5 w-5 place-items-center rounded-full border border-white/10 bg-slate-900 text-[10px] group-hover:grid hover:border-rose-400/60"
+                        title={tr(
+                          'फोल्डर नै मेटाऊ (Recycle Bin मा) · Delete the folder (to Recycle Bin)',
+                        )}
+                        aria-label="Delete project folder"
+                        onClick={() => onDeleteProject(p)}
+                      >
+                        🗑️
+                      </button>
+                    )}
                     <button
                       className="absolute -top-1.5 -right-1.5 hidden h-5 w-5 place-items-center rounded-full border border-white/10 bg-slate-900 text-[10px] text-slate-400 group-hover:grid hover:border-rose-400/60 hover:text-rose-300"
                       title={tr('सूचीबाट हटाऊ · Remove from list')}

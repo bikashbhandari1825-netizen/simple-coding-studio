@@ -222,6 +222,253 @@ function tests(fixture) {
       },
     },
     {
+      name: 'Projects 🏠: see all projects and come back, project stays open',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          document.querySelector('[data-testid="projects-home"]').click();
+          await __t.until(() => document.querySelector('[data-testid="welcome-back"]'), 5000);
+          const treeGone = !__t.row('lib');
+          const recent = [...document.querySelectorAll('.recent-card')].length;
+          document.querySelector('[data-testid="welcome-back"]').click();
+          await __t.until(() => __t.row('lib'), 5000);
+          return { treeGone, recent, backOk: Boolean(__t.row('lib')) };
+        })()`);
+        if (!r.treeGone)
+          throw new Error('welcome page did not replace the project view');
+        if (r.recent < 1)
+          throw new Error('no recent projects on the welcome page');
+        if (!r.backOk)
+          throw new Error('Back did not return to the open project');
+      },
+    },
+    {
+      name: 'Delete project 🗑️: folder goes to the Recycle Bin, a linked folder survives',
+      run: async (p) => {
+        // सबै scratch मा — everything on a scratch copy, never a real project
+        const base = fs.mkdtempSync(path.join(os.tmpdir(), 'scs-trash-'));
+        const proj = path.join(base, 'trash_me_app');
+        const keep = path.join(base, 'keep_me');
+        fs.mkdirSync(proj);
+        fs.mkdirSync(keep);
+        fs.writeFileSync(path.join(proj, 'a.txt'), 'hello');
+        fs.writeFileSync(path.join(keep, 'precious.txt'), 'do not delete');
+        try {
+          fs.symlinkSync(keep, path.join(proj, 'link_to_keep'), 'junction');
+        } catch {
+          /* junction बन्न नसके पनि परीक्षण चल्छ — the test still runs without a junction */
+        }
+        const pj = JSON.stringify(proj);
+        await p.eval(
+          `(async () => { localStorage.setItem('studio.recentProjects', JSON.stringify([${pj}, ${fx}])); return 1; })()`,
+        );
+        await p.reload();
+        await new Promise((r) => setTimeout(r, 2500));
+        await p.eval(HELPERS);
+        const open = `(async () => {
+          const card = await __t.until(() => [...document.querySelectorAll('li')].find((l) => l.querySelector('button[title]')?.title === ${pj}), 15000);
+          card.querySelector('[data-testid="recent-delete"]').click();
+          await __t.until(() => document.querySelector('[data-testid="delete-cancel"]'), 5000);
+          return 1;
+        })()`;
+        const click = (id) => `(async () => {
+          const b = await __t.until(() => { const x = document.querySelector('[data-testid="${id}"]'); return x && !x.disabled ? x : null; }, 8000);
+          b.click(); await __t.wait(250); return 1;
+        })()`;
+        // एक क्लिकले केही मेटिँदैन: "हो" बटन पहिले लक हुन्छ — one click deletes nothing; the yes button starts locked
+        await p.eval(open);
+        const lockedAtStart = await p.eval(
+          `document.querySelector('[data-testid="delete-continue"]').disabled`,
+        );
+        if (!lockedAtStart)
+          throw new Error('the yes button was not locked at first');
+        // रद्द गर्दा केही हुँदैन — cancel keeps everything
+        await p.eval(click('delete-cancel'));
+        await new Promise((r) => setTimeout(r, 500));
+        if (!fs.existsSync(proj)) throw new Error('cancel deleted the folder');
+        // तीन चरण: हो, फेरि हो, अनि नाम — yes, yes again, then the name
+        await p.eval(open);
+        await p.eval(click('delete-continue'));
+        if (!fs.existsSync(proj)) throw new Error('deleted after one yes');
+        await p.eval(click('delete-continue'));
+        if (!fs.existsSync(proj)) throw new Error('deleted after two yes');
+        const wrong = await p.eval(`(async () => {
+          const set = (el, v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };
+          const input = await __t.until(() => document.querySelector('[role="dialog"] input'), 5000);
+          set(input, 'wrong_name');
+          const b = await __t.until(() => { const x = document.querySelector('[data-testid="delete-final"]'); return x && !x.disabled ? x : null; }, 8000);
+          b.click(); await __t.wait(800);
+          return { dialogOpen: Boolean(document.querySelector('[role="dialog"]')) };
+        })()`);
+        if (!wrong.dialogOpen) throw new Error('dialog closed on a wrong name');
+        if (!fs.existsSync(proj))
+          throw new Error('folder was deleted by a wrong name');
+        await p.eval(`(async () => {
+          const set = (el, v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };
+          set(document.querySelector('[role="dialog"] input'), 'trash_me_app');
+          document.querySelector('[data-testid="delete-final"]').click();
+          await __t.until(() => !document.querySelector('[role="dialog"]'), 15000);
+          return 1;
+        })()`);
+        await new Promise((r) => setTimeout(r, 800));
+        if (fs.existsSync(proj))
+          throw new Error('project folder is still on disk');
+        if (!fs.existsSync(path.join(keep, 'precious.txt')))
+          throw new Error('the linked folder was damaged!');
+        const listed = await p.eval(
+          `[...document.querySelectorAll('li button[title]')].map((b) => b.title)`,
+        );
+        if (listed.includes(proj)) throw new Error('still listed in Recent');
+        fs.rmSync(base, { recursive: true, force: true });
+        // अरू परीक्षणका लागि fixture फेरि खोल्ने — reopen the fixture for the next tests
+        await p.eval(`(async () => {
+          (await __t.until(() => [...document.querySelectorAll('button')].find((x) => x.title === ${fx}), 15000)).click();
+          await __t.until(() => __t.row('lib'), 10000);
+          return 1;
+        })()`);
+      },
+    },
+    {
+      name: 'Learn 🎓: a lesson opens only after the one before is passed; wrong answers give hints',
+      run: async (p) => {
+        const r = await p.eval(`(async () => {
+          localStorage.removeItem('scs.learn.v1');
+          const q = (id) => document.querySelector('[data-testid="' + id + '"]');
+          const until = (f, ms = 8000) => __t.until(f, ms);
+          const clickWhenReady = async (id) => { const b = await until(() => { const x = q(id); return x && !x.disabled ? x : null; }); b.click(); await __t.wait(200); };
+          const set = (el, v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); };
+          const out = {};
+          q('learn-open').click();
+          await until(() => q('learn-list'));
+          out.secondLockedAtStart = q('lesson-bits-2').disabled && q('lesson-bits-2').dataset.state === 'locked';
+          out.firstOpen = !q('lesson-bits-1').disabled;
+          q('lesson-bits-1').click();
+          await until(() => q('learn-map'));
+          out.mapText = q('learn-map').innerText.length > 60;
+          q('learn-start').click();
+          await until(() => q('learn-run'));
+          // चरण १: किन? — step 1: Why?
+          await clickWhenReady('learn-why');
+          out.whyShown = Boolean(q('learn-why-text'));
+          await clickWhenReady('learn-next');
+          await clickWhenReady('learn-next'); // चरण २ — step 2
+          // अभ्यास: गलत उत्तर — practice: a wrong answer
+          const input = await until(() => q('learn-input'));
+          set(input, '0111');
+          await clickWhenReady('learn-check');
+          out.wrongShown = Boolean(q('learn-wrong'));
+          out.hintShown = Boolean(q('learn-hint'));
+          out.noNextOnWrong = !q('learn-next');
+          set(q('learn-input'), '0110');
+          await clickWhenReady('learn-check');
+          out.rightShown = Boolean(q('learn-right'));
+          await clickWhenReady('learn-next');
+          // क्विज: छनौट — quiz: choices (wrong first, then right)
+          const pick = async (txt) => { const o = [...document.querySelectorAll('[data-testid="learn-option"]')].find((b) => b.innerText.trim() === txt); o.click(); await __t.wait(100); await clickWhenReady('learn-check'); };
+          await until(() => document.querySelector('[data-testid="learn-option"]'));
+          await pick('1011');
+          out.choiceWrong = Boolean(q('learn-wrong')) && !q('learn-next');
+          await pick('1101');
+          out.choiceRight = Boolean(q('learn-right'));
+          await clickWhenReady('learn-next');
+          // दिमागी खेल: ३, ६, ९, १२ — brain puzzle (Nepali digits accepted)
+          set(await until(() => q('learn-input')), '१५');
+          await clickWhenReady('learn-check');
+          out.puzzleRight = Boolean(q('learn-right'));
+          await clickWhenReady('learn-next');
+          await until(() => q('learn-done'));
+          out.done = true;
+          out.saved = localStorage.getItem('scs.learn.v1');
+          await clickWhenReady('learn-next-lesson');
+          await until(() => q('learn-map'));
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+          await until(() => !q('learn-map'));
+          q('learn-open').click();
+          await until(() => q('learn-list'));
+          out.secondOpenAfter = q('lesson-bits-2').dataset.state === 'open';
+          out.thirdStillLocked = q('lesson-bits-3').dataset.state === 'locked';
+          out.firstPassed = q('lesson-bits-1').dataset.state === 'passed';
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+          return out;
+        })()`);
+        const need = [
+          'secondLockedAtStart',
+          'firstOpen',
+          'mapText',
+          'whyShown',
+          'wrongShown',
+          'hintShown',
+          'noNextOnWrong',
+          'rightShown',
+          'choiceWrong',
+          'choiceRight',
+          'puzzleRight',
+          'done',
+          'secondOpenAfter',
+          'thirdStillLocked',
+          'firstPassed',
+        ];
+        const failed = need.filter((k) => !r[k]);
+        if (failed.length)
+          throw new Error(
+            'Learn check failed: ' +
+              failed.join(', ') +
+              ' ' +
+              JSON.stringify(r),
+          );
+        if (!/bits-1/.test(r.saved ?? ''))
+          throw new Error('progress was not saved');
+      },
+    },
+    {
+      name: 'Guru voice 🎵: tap a line and it is read from that line (highlighted), not from the top',
+      run: async (p) => {
+        // एउटा तयार जवाफ राखेर — seed one finished answer (no Claude used)
+        const seeded = await p.eval(`(() => {
+          const prefix = 'scs.guru.v2:' + ${fx}.toLowerCase() + ':';
+          const key = Object.keys(localStorage).find((k) => k.startsWith(prefix));
+          if (!key) return false;
+          const fence = String.fromCharCode(96).repeat(3);
+          const code = (c) => fence + 'dart' + String.fromCharCode(10) + c + String.fromCharCode(10) + fence;
+          const content = ['First line here.', 'Second line here.', 'Third line here.', 'lib/a.dart', code('class A {}'), 'lib/b.dart', code('class B {}')].join(String.fromCharCode(10, 10));
+          localStorage.setItem(key, JSON.stringify([{ id: 'seed1', role: 'assistant', content, streaming: false }]));
+          return true;
+        })()`);
+        if (!seeded)
+          throw new Error('no Guru chat key for the fixture project');
+        await p.reload();
+        await new Promise((r) => setTimeout(r, 2500));
+        await p.eval(HELPERS);
+        const r = await p.eval(`(async () => {
+          (await __t.until(() => [...document.querySelectorAll('button')].find((x) => x.title === ${fx}), 15000)).click();
+          const root = await __t.until(() => document.querySelector('[data-answer-id="seed1"]'), 15000);
+          const line = (t) => [...root.querySelectorAll('p')].find((x) => x.innerText.trim() === t);
+          const lit = () => [...document.querySelectorAll('.speaking-line')].map((x) => x.innerText.trim());
+          const seen = [];
+          const watch = setInterval(() => { for (const t of lit()) if (!seen.includes(t)) seen.push(t); }, 100);
+          line('Second line here.').click();
+          const got = await __t.until(() => lit().includes('Second line here.'), 40000, 150);
+          await __t.until(() => seen.includes('Third line here.'), 40000, 150);
+          clearInterval(watch);
+          await window.studio.stopSpeaking();
+          await __t.wait(500);
+          return { got: Boolean(got), seen, afterStop: lit(), buttons: [...document.querySelectorAll('aside button[aria-label="Read aloud all"], aside button[aria-label="Stop reading"]')].length };
+        })()`);
+        if (!r.got)
+          throw new Error(
+            'the tapped line was not highlighted: ' + JSON.stringify(r),
+          );
+        if (r.seen.includes('First line here.'))
+          throw new Error(
+            'it started from the top, not from the tapped line: ' +
+              JSON.stringify(r),
+          );
+        if (!r.seen.includes('Third line here.'))
+          throw new Error(
+            'it did not go on to the next line: ' + JSON.stringify(r),
+          );
+      },
+    },
+    {
       name: 'Click-to-open: text, UTF-8 BOM, UTF-16; binary refused politely',
       run: async (p) => {
         const r = await p.eval(`(async () => {

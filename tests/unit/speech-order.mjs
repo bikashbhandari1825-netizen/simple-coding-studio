@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 const mod = await import(
   pathToFileURL(path.resolve('src/renderer/lib/speechText.ts')).href
 );
-const { markdownToSpeech } = mod;
+const { markdownToSpeech, unitsToSpeech, spokenFileName, codeNote } = mod;
 let bad = 0;
 const check = (name, md, want) => {
   const got = markdownToSpeech(md).map((c) => c.lang);
@@ -67,14 +67,16 @@ if (/[ऀ-ॿ]/.test(allSpoken) || englishOnly.some((c) => c.lang !== 'en-US')) 
   bad++;
 } else
   console.log('ok   English answer is spoken fully in English ->', allSpoken);
-const cue = englishOnly.find((c) => /code is on the screen/i.test(c.text));
+const cue = englishOnly.find((c) =>
+  /code is in the Guru code box on the screen/i.test(c.text),
+);
 if (!cue) {
   console.log('FAIL the code cue is not English');
   bad++;
 } else console.log('ok   code cue is English');
 // Nepali answer keeps the Nepali cue
 const nep = markdownToSpeech('यसले पाठ देखाउँछ।\n\n```dart\nvoid main() {}\n```');
-if (!nep.some((c) => /code छ/.test(c.text))) {
+if (!nep.some((c) => /कोड Guru को कोड बाकसमा/.test(c.text))) {
   console.log('FAIL Nepali answer lost its Nepali cue');
   bad++;
 } else console.log('ok   Nepali answer keeps the Nepali cue');

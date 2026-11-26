@@ -11,6 +11,7 @@ import type {
 import { ConsolePanel, type ConsoleLine } from './components/ConsolePanel';
 import { AccountMenu, useClaudeAccount } from './components/ClaudeAccount';
 import {
+  DeleteProjectDialog,
   NewFlutterDialog,
   PromptDialog,
   SettingsDialog,
@@ -28,6 +29,7 @@ import {
 import { ProblemsPanel, type Problem } from './components/ProblemsPanel';
 import { findWrongFile, samePath as pathEndsWith } from './lib/wrongFile';
 import { ErrorGuide } from './components/ErrorGuide';
+import { LearnPanel } from './components/LearnPanel';
 import { fixMissingImports } from './lib/fixImports';
 import { SessionList, type GuruSession } from './components/SessionList';
 import {
@@ -42,6 +44,7 @@ import type { CodeBlock } from './lib/splitCode';
 import {
   baseName,
   errorText,
+  forgetRecent,
   isProbablyBinary,
   languageFor,
   rememberRecent,
@@ -64,6 +67,8 @@ type DialogKind =
   | 'newFile'
   | 'newFolder'
   | 'newFlutter'
+  | 'deleteProject'
+  | 'learn'
   | 'settings'
   | 'quickOpen'
   | 'search'
@@ -82,6 +87,11 @@ const MAX_CONSOLE_CHARS = 200_000;
 
 export default function App() {
   const [project, setProject] = useState<ProjectInfo | null>(null);
+  // 🏠 project खुला राखेरै स्वागत पृष्ठ देखाउने — show the welcome page while the project stays open
+  const [home, setHome] = useState(false);
+  // 🗑️ मेटाउन खोजिएको project र स्वागत पृष्ठको सूची नयाँ गर्ने गन्ती — the project asked to delete, and a counter that refreshes the Recent list
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [recentVersion, setRecentVersion] = useState(0);
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [selectedDir, setSelectedDir] = useState('');
@@ -516,6 +526,7 @@ export default function App() {
   const applyProject = useCallback((proj: ProjectInfo | null) => {
     if (!proj) return;
     setProject(proj);
+    setHome(false);
     setTabs([]);
     setActivePath(null);
     setSelectedDir(proj.rootPath);
@@ -533,6 +544,12 @@ export default function App() {
   };
 
   const openRecent = async (p: string) => {
+    // अहिले खुलेकै project हो भने फाइलहरू जस्ताको तस्तै फर्किने — same project: just go back to it
+    if (project && home && samePath(project.rootPath, p)) {
+      setHome(false);
+      return;
+    }
+    if (project && !confirmDiscard()) return;
     try {
       const proj = await window.studio.openRecentFolder(p);
       if (!proj)
@@ -1788,6 +1805,19 @@ export default function App() {
             </svg>
           </button>
         </div>
+        {project && !home && (
+          <button
+            className="btn-ghost"
+            data-testid="projects-home"
+            title={tr(
+              'सबै project हेर्ने (यो project खुलै रहन्छ) · All projects (this one stays open)',
+            )}
+            onClick={() => setHome(true)}
+          >
+            <span aria-hidden="true">🏠</span>{' '}
+            <span className="tb-label">{tr('Projects')}</span>
+          </button>
+        )}
         <button
           className="btn-ghost"
           title={tr('फोल्डर खोल · Open folder')}
@@ -1930,6 +1960,15 @@ export default function App() {
             <span className="tb-label">{tr('सेभ · Save')}</span>
           </button>
         )}
+        <button
+          className="btn-ghost"
+          data-testid="learn-open"
+          title={tr('सिक्ने पाठ · Learn step by step')}
+          onClick={() => setDialog('learn')}
+        >
+          <span aria-hidden="true">🎓</span>{' '}
+          <span className="tb-label">{tr('सिक्ने · Learn')}</span>
+        </button>
         <LangSwitch value={uiLang} onChange={changeLang} />
         <AccountMenu account={account} />
         <button
@@ -1944,7 +1983,7 @@ export default function App() {
 
       {/* Body */}
       <div className="flex min-h-0 flex-1">
-        {project ? (
+        {project && !home ? (
           <>
             <aside className="glass-panel flex w-64 shrink-0 flex-col border-r">
               <div className="min-h-0 flex-1">
@@ -2084,7 +2123,14 @@ export default function App() {
               <Welcome
                 onOpenFolder={() => void openFolder()}
                 onNewFlutter={() => setDialog('newFlutter')}
+                key={recentVersion}
                 onOpenRecent={(p) => void openRecent(p)}
+                onDeleteProject={(p) => {
+                  setDeleteTarget(p);
+                  setDialog('deleteProject');
+                }}
+                currentProject={project?.rootPath}
+                onBack={() => setHome(false)}
               />
             </div>
             {consoleLines.length > 0 && (
@@ -2380,6 +2426,43 @@ export default function App() {
             const created = await window.studio.createFolder(selectedDir, name);
             setSelectedDir(created);
             setTreeVersion((v) => v + 1);
+          }}
+        />
+      )}
+      {dialog === 'learn' && (
+        <LearnPanel
+          onClose={() => setDialog(null)}
+          onAskGuru={(question) =>
+            setPendingTutor({
+              mode: 'chat',
+              label: tr('🎓 पाठको प्रश्न बुझाऊ · Explain this lesson question'),
+              prompt: question,
+              context: undefined,
+            })
+          }
+        />
+      )}
+      {dialog === 'deleteProject' && deleteTarget && (
+        <DeleteProjectDialog
+          folderName={baseName(deleteTarget)}
+          folderPath={deleteTarget}
+          onClose={() => {
+            setDialog(null);
+            setDeleteTarget(null);
+          }}
+          onSubmit={async () => {
+            const folder = deleteTarget;
+            // यही project खुलेको छ भने पहिले बन्द गर्ने — close it first if it is the open project
+            await window.studio.stopRun().catch(() => undefined);
+            if (project && samePath(project.rootPath, folder)) {
+              setProject(null);
+              setHome(false);
+              setTabs([]);
+              setActivePath(null);
+            }
+            await window.studio.trashProject(folder);
+            forgetRecent(folder);
+            setRecentVersion((v) => v + 1);
           }}
         />
       )}

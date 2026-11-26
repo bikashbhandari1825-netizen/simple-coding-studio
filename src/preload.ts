@@ -31,6 +31,8 @@ const api: StudioApi = {
     ipcRenderer.invoke('fs:openDroppedPath', webUtils.getPathForFile(file)),
   openRecentFolder: (folderPath) =>
     ipcRenderer.invoke('fs:openDroppedPath', folderPath),
+  trashProject: (folderPath) =>
+    ipcRenderer.invoke('fs:trashProject', folderPath),
   readDir: (dirPath) => ipcRenderer.invoke('fs:readDir', dirPath),
   readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
   listAllFiles: (rootPath) => ipcRenderer.invoke('fs:listAll', rootPath),

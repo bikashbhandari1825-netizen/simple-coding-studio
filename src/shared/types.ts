@@ -186,6 +186,8 @@ export interface StudioApi {
   openDroppedFolder(file: File): Promise<ProjectInfo | null>;
   /** पहिले खोलेको project फेरि खोल्ने — Reopen a recent project by path. */
   openRecentFolder(folderPath: string): Promise<ProjectInfo | null>;
+  /** पूरै project फोल्डर Recycle Bin मा पठाउने (फिर्ता ल्याउन सकिन्छ) — send a whole project folder to the Recycle Bin (restorable). */
+  trashProject(folderPath: string): Promise<void>;
   readDir(dirPath: string): Promise<FileEntry[]>;
   readFile(filePath: string): Promise<string>;
   /** Ctrl+P "फाइल खोज" का लागि project का सबै फाइल — every file in the project, for Quick Open. */

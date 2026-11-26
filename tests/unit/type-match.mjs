@@ -97,4 +97,48 @@ eq(
   matchProgress('a;\nb;', 'a;').partial,
   [0, 0],
 );
+// ---- the editor closes quotes and brackets by itself: the green must not disappear
+const pub =
+  "name: bhasha_sathi\n\nenvironment:\n  sdk: '>=3.0.0 <4.0.0'\n\ndependencies:\n  flutter:";
+eq(
+  "sdk: '>=' (auto-closed quote) still turns 8 characters green",
+  matchProgress(pub, "name: bhasha_sathi\n\nenvironment:\n  sdk: '>='")
+    .partial[3],
+  8,
+);
+eq(
+  "sdk: '>= (no auto-close) still 8 characters",
+  matchProgress(pub, "name: bhasha_sathi\n\nenvironment:\n  sdk: '>=")
+    .partial[3],
+  8,
+);
+eq(
+  'the line above stays done while the next is half typed',
+  matchProgress(
+    pub,
+    "name: bhasha_sathi\n\nenvironment:\n  sdk: '>='",
+  ).states.slice(0, 3),
+  ['done', 'done', 'done'],
+);
+eq(
+  "print('Hel') with auto-closed quote and bracket: 10 characters",
+  matchProgress("print('Hello');", "print('Hel')").partial,
+  [10],
+);
+eq(
+  "a wrong letter is not forgiven: sdk: '>=x",
+  matchProgress(pub, "name: bhasha_sathi\n\nenvironment:\n  sdk: '>=x'")
+    .partial[3],
+  0,
+);
+eq(
+  'only closing characters are forgiven, not other extras',
+  matchProgress("print('Hello');", "print('Hel'a").partial,
+  [0],
+);
+eq(
+  'a finished line with its auto-closed ending is done',
+  matchProgress("print('Hi');", "print('Hi');").states,
+  ['done'],
+);
 process.exit(bad ? 1 : 0);

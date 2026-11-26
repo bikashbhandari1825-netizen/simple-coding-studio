@@ -1,7 +1,8 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import type { Dirent } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { checkTrashableProject } from './projectTrash';
 import type {
   FileEntry,
   ProjectInfo,
@@ -515,6 +516,39 @@ export function registerFileSystemHandlers(): void {
           throw err;
         });
       return target;
+    },
+  );
+
+  // 🗑️ पूरै project फोल्डर Recycle Bin मा पठाउने (फिर्ता ल्याउन सकिन्छ) — send a whole project folder to the Recycle Bin (restorable)
+  ipcMain.handle(
+    'fs:trashProject',
+    async (_event, folderPath: unknown): Promise<void> => {
+      const protectedPaths = [
+        app.getPath('home'),
+        app.getPath('desktop'),
+        app.getPath('documents'),
+        app.getPath('downloads'),
+        app.getPath('appData'),
+        app.getPath('userData'),
+        app.getPath('temp'),
+        path.dirname(app.getPath('exe')),
+        process.env.OneDrive ?? '',
+        process.env.SystemRoot ?? '',
+        process.env.ProgramFiles ?? '',
+        process.env['ProgramFiles(x86)'] ?? '',
+      ];
+      const check = checkTrashableProject(folderPath, protectedPaths);
+      if (check.error) throw new Error(check.error);
+      const target = path.resolve(folderPath as string);
+      const info = await fs.stat(target).catch(() => null);
+      if (!info?.isDirectory())
+        throw new Error('यो फोल्डर भेटिएन — This folder no longer exists.');
+      try {
+        await shell.trashItem(target);
+      } catch (err) {
+        throw friendlyFsError(err, target);
+      }
+      allowedRoots.delete(target);
     },
   );
 

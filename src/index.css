@@ -924,3 +924,25 @@ input[type='checkbox'] {
     animation: none;
   }
 }
+
+/* 🎵 जवाफको लाइन थिचेर त्यहींबाट सुन्ने (Spotify को गीतको लाइन जस्तै) — tap a line of an answer to listen from there */
+[data-answer] .md-body p,
+[data-answer] .md-body li,
+[data-answer] .md-body h1,
+[data-answer] .md-body h2,
+[data-answer] .md-body h3,
+[data-answer] .md-body h4,
+[data-answer] .md-body tbody tr {
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+[data-answer] .md-body p:hover,
+[data-answer] .md-body li:hover,
+[data-answer] .md-body tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+.speaking-line {
+  background-color: rgba(139, 92, 246, 0.2) !important;
+  box-shadow: inset 3px 0 0 #a78bfa;
+}

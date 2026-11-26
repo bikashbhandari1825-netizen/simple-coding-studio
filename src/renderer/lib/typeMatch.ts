@@ -19,6 +19,15 @@ export interface Progress {
   partial: number[];
 }
 
+/** editor ले आफैं थप्ने बन्द चिह्न मात्र — only characters an editor adds by itself when closing a pair */
+const AUTO_CLOSED = /^[)\]}>'"`]+$/;
+
+function commonPrefix(a: string, b: string): number {
+  let n = 0;
+  while (n < a.length && n < b.length && a[n] === b[n]) n++;
+  return n;
+}
+
 /**
  * लक्ष्य कोडका लाइन क्रमैसँग टाइप गरिएको पाठमा खोज्ने (खाली ठाउँ बेवास्ता)।
  * Find the target lines, in order, inside the typed text (leading/trailing spaces ignored).
@@ -64,11 +73,23 @@ export function matchProgress(
     }
   }
   if (tail) {
-    const j = lines.findIndex(
-      (l, i) =>
-        !done[i] && l.trim().length > tail.length && l.trim().startsWith(tail),
-    );
-    if (j >= 0) partial[j] = tail.length;
+    // editor ले आफैं बन्द गर्ने चिह्न ('  "  )  ]  }  >  `) पनि मानिन्छ: sdk: '>=' भए पनि sdk: '>=3.0.0... को सुरु हो
+    // The editor closes quotes and brackets by itself: "sdk: '>='" is still the start of "sdk: '>=3.0.0 ...'"
+    let at = -1;
+    let len = 0;
+    lines.forEach((l, i) => {
+      if (at >= 0 || done[i]) return;
+      const t = l.trim();
+      const n = commonPrefix(t, tail);
+      const exact = n === tail.length && t.length > tail.length;
+      const autoClosed =
+        n > 0 && n < t.length && AUTO_CLOSED.test(tail.slice(n));
+      if (exact || autoClosed) {
+        at = i;
+        len = n;
+      }
+    });
+    if (at >= 0) partial[at] = len;
   }
   const nextLine = lines.findIndex((l, i) => l.trim() && !done[i]);
   if ((matched > 0 || tail) && nextLine >= 0 && states[nextLine] !== 'done')
